@@ -384,7 +384,7 @@ transfers ownership of the FDBCluster to the caller. The caller is responsible
 for calling fdb_cluster_destroy() when finished with the result.
 """
 function fdb_future_get_cluster(f, out_cluster)
-    ccall((:fdb_future_get_cluster, fdb_c), fdb_error_t, (fdb_future_ptr_t, Ptr{Ptr{FDBCluster}}), f, out_cluster)
+    ccall((:fdb_future_get_cluster, fdb_c), fdb_error_t, (fdb_future_ptr_t, Ptr{fdb_cluster_ptr_t}), f, out_cluster)
 end
 
 """
@@ -409,7 +409,7 @@ transfers ownership of the FDBDatabase to the caller. The caller is responsible
 for calling fdb_database_destroy(*out_database) when finished with the result.
 """
 function fdb_future_get_database(f, out_database)
-    ccall((:fdb_future_get_database, fdb_c), fdb_error_t, (fdb_future_ptr_t, Ptr{Ptr{FDBDatabase}}), f, out_database)
+    ccall((:fdb_future_get_database, fdb_c), fdb_error_t, (fdb_future_ptr_t, Ptr{fdb_database_ptr_t}), f, out_database)
 end
 
 """
