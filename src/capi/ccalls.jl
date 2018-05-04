@@ -119,8 +119,8 @@ function fdb_run_network()
     ccall((:fdb_run_network, fdb_c), fdb_error_t, ())
 end
 function fdb_run_network_in_thread()
-    if Threads.nthreads() < 4
-        error("You must enable threading in Julia and configure JULIA_NUM_THREADS to be at least 4")
+    if Threads.nthreads() < 2
+        error("You must enable threading in Julia and configure JULIA_NUM_THREADS to be at least 2. It is now $(Threads.nthreads())")
     end
     @threadcall((:fdb_run_network, fdb_c), fdb_error_t, ())
 end
@@ -206,8 +206,8 @@ function fdb_future_block_until_ready(f)
     ccall((:fdb_future_block_until_ready, fdb_c), fdb_error_t, (fdb_future_ptr_t,), f)
 end
 function fdb_future_block_until_ready_in_thread(f)
-    if Threads.nthreads() < 4
-        error("You must enable threading in Julia and configure JULIA_NUM_THREADS to be at least 4")
+    if Threads.nthreads() < 2
+        error("You must enable threading in Julia and configure JULIA_NUM_THREADS to be at least 2. It is now $(Threads.nthreads())")
     end
     @threadcall((:fdb_future_block_until_ready, fdb_c), fdb_error_t, (fdb_future_ptr_t,), f)
 end

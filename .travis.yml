@@ -6,6 +6,8 @@ os:
 julia:
   - 0.6
   - nightly
+env:
+  - JULIA_NUM_THREADS=2
 matrix:
   fast_finish: true
   allow_failures:
@@ -17,9 +19,10 @@ git:
 before_install:
   - if [ $TRAVIS_OS_NAME = "linux" ]; then ./install_fdb.sh; fi
 
-## uncomment the following lines to override the default test script
-#script:
-#  - julia -e 'Pkg.clone(pwd()); Pkg.build("FoundationDB"); Pkg.test("FoundationDB"; coverage=true)'
+script:
+  - echo JULIA_NUM_THREADS=$JULIA_NUM_THREADS
+  - export JULIA_NUM_THREADS
+  - julia -e 'Pkg.clone(pwd()); Pkg.build("FoundationDB"); Pkg.test("FoundationDB"; coverage=true)'
 after_success:
   # push coverage results to Coveralls
   - julia -e 'cd(Pkg.dir("FoundationDB")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())'

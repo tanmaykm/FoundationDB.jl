@@ -36,3 +36,11 @@ open(FDBCluster()) do cluster                        # Read cluster configuratio
     end
 end
 ```
+
+Note: The Julia implementation makes use of Julia threading APIs. Make sure you have enabled threading and have at least two threads configured for Julia. E.g.:
+
+```
+$> JULIA_NUM_THREADS=2
+$> export JULIA_NUM_THREADS
+$> julia -e 'Pkg.test("FoundationDB")'
+```
