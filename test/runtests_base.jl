@@ -121,6 +121,35 @@ try
         @test 0 <= sumval <= (5050 * 1.5) # series sum of 1:100 = 5050
     end
 
+    @testset "large key value" begin
+        open(FDBCluster()) do cluster
+            open(FDBDatabase(cluster)) do db
+                key = ones(UInt8, 10000)
+                val = ones(UInt8, 100000)
+                open(FDBTransaction(db)) do tran
+                    @test clearkey(tran, key) == nothing
+                    @test getval(tran, key) == nothing
+                    @test setval(tran, key, val) == nothing
+                    @test getval(tran, key) == val
+                    @test commit(tran)
+                    @test reset(tran) == nothing
+                    @test commit(tran)              # test that commit is allowed after a reset
+                end
+
+                open(FDBTransaction(db)) do tran
+                    @test clearkey(tran, key) == nothing
+                    @test getval(tran, key) == nothing
+                end
+
+                open(FDBTransaction(db)) do tran
+                    @test getval(tran, key) == nothing
+                    @test reset(tran) == nothing
+                end
+            end
+        end
+    end
+
+
     @testset "stop network" begin
         @test is_client_running()
         @test stop_client() === nothing

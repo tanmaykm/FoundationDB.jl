@@ -327,12 +327,6 @@ end
 # Get Set Ops
 #-------------------------------------------------------------------------------
 
-function setkey(tran::FDBTransaction, key::Vector{UInt8}, val::Vector{UInt8})
-    ret = fdb_transaction_set(tran.ptr, key, Cint(length(key)), val, Cint(length(val)))
-    tran.needscommit = true
-    ret
-end
-
 function clearkey(tran::FDBTransaction, key::Vector{UInt8})
     ret = fdb_transaction_clear(tran.ptr, key, Cint(length(key)))
     tran.needscommit = true
