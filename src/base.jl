@@ -8,16 +8,17 @@ struct FDBError
     desc::String
 end
 
-FDBError(code::fdb_error_t) = FDBError(code, fdb_get_error(code))
+strerrdesc(cs::Cstring) = (cs == C_NULL) ? "unknown" : unsafe_string(cs)
+FDBError(code::fdb_error_t) = FDBError(code, strerrdesc(fdb_get_error(code)))
 function FDBError(future::fdb_future_ptr_t)
     desc = Ref{Cstring}(C_NULL)
     block_until(future)
     errcode = fdb_future_get_error(future, desc)
     if desc[] == C_NULL
         # try getting it with a different API
-        desc = Ref{Cstring}(fdb_get_error(errcode))
+        desc[] = fdb_get_error(errcode)
     end
-    FDBError(errcode, desc[] == C_NULL ? "unknown" : unsafe_string(desc[]))
+    FDBError(errcode, strerrdesc(desc[]))
 end
 
 function throw_on_error(result)
@@ -97,6 +98,7 @@ end
 #-------------------------------------------------------------------------------
 # Opening cluster, database, transaction
 #-------------------------------------------------------------------------------
+
 """
 An opaque type that represents a Cluster in the FoundationDB C API.
 """
@@ -117,7 +119,7 @@ end
 
 open(fn::Function, cluster::FDBCluster) = try fn(open(cluster)) finally close(cluster) end
 function open(cluster::FDBCluster)
-    if cluster.ptr === C_NULL
+    if !isopen(cluster)
         @assert is_client_running()
         handle = with_err_check(fdb_create_cluster(cluster.cluster_file)) do future
             h = Ref{fdb_cluster_ptr_t}(C_NULL)
@@ -131,7 +133,7 @@ function open(cluster::FDBCluster)
 end
 
 function close(cluster::FDBCluster)
-    if is_client_running() && (cluster.ptr !== C_NULL)
+    if is_client_running() && isopen(cluster)
         fdb_cluster_destroy(cluster.ptr)
         cluster.ptr = C_NULL
     end
@@ -163,7 +165,7 @@ end
 
 open(fn::Function, db::FDBDatabase) = try fn(open(db)) finally close(db) end
 function open(db::FDBDatabase)
-    if db.ptr === C_NULL
+    if !isopen(db)
         @assert is_client_running()
         cl = db.cluster.ptr
         name = convert(Vector{UInt8}, db.name)
@@ -180,7 +182,7 @@ function open(db::FDBDatabase)
 end
 
 function close(db::FDBDatabase)
-    if is_client_running() && (db.ptr !== C_NULL)
+    if is_client_running() && isopen(db)
         fdb_database_destroy(db.ptr)
         db.ptr = C_NULL
     end
@@ -217,7 +219,7 @@ mutable struct FDBTransaction
     function FDBTransaction(db::FDBDatabase)
         tran = new(db, C_NULL)
         finalizer(tran, (tran)->close(tran))
-        db
+        tran
     end
 end
 
@@ -227,7 +229,7 @@ end
 
 open(fn::Function, tran::FDBTransaction) = try fn(open(tran)) finally close(tran) end
 function open(tran::FDBTransaction)
-    if tran.ptr === C_NULL
+    if !isopen(tran)
         @assert is_client_running()
         db = tran.db.ptr
         h = Ref{fdb_database_ptr_t}(C_NULL)
@@ -240,16 +242,22 @@ function open(tran::FDBTransaction)
 end
 
 function close(tran::FDBTransaction)
-    if is_client_running() && (tran.ptr !== C_NULL)
+    if is_client_running() && isopen(tran)
         fdb_transaction_destroy(tran.ptr)
         tran.ptr = C_NULL
     end
     nothing
 end
 
+"""
+Check if it is open.
+"""
+isopen(x::Union{FDBCluster,FDBDatabase,FDBTransaction}) = !(x.ptr === C_NULL)
+
 #-------------------------------------------------------------------------------
 # Transaction Ops
 #-------------------------------------------------------------------------------
+
 function reset(tran::FDBTransaction)
     fdb_transaction_reset(tran.ptr)
     nothing
@@ -260,13 +268,27 @@ function cancel(tran::FDBTransaction)
     nothing
 end
 
-function commit(tran::FDBTransaction)
-    err_check(fdb_transaction_commit(tran.ptr))
+"""
+- returns true on success
+- returns false on a retryable error
+- throws error on non-retryable error
+"""
+function retry_on_error(tran::FDBTransaction, future::fdb_future_ptr_t)
+    err = FDBError(future)
+    if err.code != 0
+        throw_on_error(fdb_transaction_on_error(tran.ptr, err.code))
+        return false
+    end
+    true
+end
+
+function commit(tran::FDBTransaction, on_error=retry_on_error)
+    err_check(fdb_transaction_commit(tran.ptr), on_error)
 end
 
 function get_read_version(tran::FDBTransaction)
     ver = Ref{Int64}(0)
-    with_err_check(fdb_transaction_get_read_version(tran)) do result
+    with_err_check(fdb_transaction_get_read_version(tran.ptr)) do result
         fdb_future_get_version(result, ver)
         fdb_future_destroy(result)
     end
@@ -281,4 +303,39 @@ function get_committed_version(tran::FDBTransaction)
     ver = Ref{Int64}(0)
     err_check(fdb_transaction_get_committed_version(tran.ptr, ver))
     ver[]
+end
+
+#-------------------------------------------------------------------------------
+# Get Set Ops
+#-------------------------------------------------------------------------------
+
+function setkey(tran::FDBTransaction, key::Vector{UInt8}, val::Vector{UInt8})
+    fdb_transaction_set(tran.ptr, key, Cint(length(key)), val, Cint(length(val)))
+end
+
+function clearkey(tran::FDBTransaction, key::Vector{UInt8})
+    fdb_transaction_clear(tran.ptr, key, Cint(length(key)))
+end
+
+function clearkeyrange(tran::FDBTransaction, begin_key::Vector{UInt8}, end_key::Vector{UInt8})
+    fdb_transaction_clear_range(tran.ptr, begin_key, Cint(length(begin_key)), end_key, Cint(length(end_key)))
+end
+
+copyval(tran::FDBTransaction, present::Bool, val::Vector{UInt8}) = present ? copy(val) : nothing
+getval(tran::FDBTransaction, key::Vector{UInt8}) = getval(copyval, tran, key)
+function getval(fn::Function, tran::FDBTransaction, key::Vector{UInt8})
+    val = nothing
+    present = Ref{fdb_bool_t}(false)
+    valptr = Ref{Ptr{UInt8}}(C_NULL)
+    vallen = Ref{Cint}(0)
+    with_err_check(fdb_transaction_get(tran.ptr, key, Cint(length(key)))) do result
+        err_check(fdb_future_get_value(result, present, valptr, vallen))
+        val = fn(tran, Bool(present[]), unsafe_wrap(Array, valptr[], (vallen[],), false))
+        fdb_future_destroy(result)
+    end
+    val
+end
+
+function setval(tran::FDBTransaction, key::Vector{UInt8}, val::Vector{UInt8})
+    fdb_transaction_set(tran.ptr, key, Cint(length(key)), val, Cint(length(val)))
 end
