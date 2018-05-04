@@ -1,3 +1,4 @@
+__precompile__(true)
 module FoundationDB
 
 import Base: show, open, close, reset, isopen

@@ -1,5 +1,3 @@
-using Compat
-
 struct enum_fdb_network_option
     LOCAL_ADDRESS::Cint
     CLUSTER_FILE::Cint
