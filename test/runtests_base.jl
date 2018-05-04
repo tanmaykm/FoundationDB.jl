@@ -32,17 +32,16 @@ try
                     push!(chk_closed, tran)
                     @test tran.ptr !== C_NULL
 
+                    @test clearkey(tran, key) == nothing
                     @test getval(tran, key) == nothing
                     @test setval(tran, key, val) == nothing
                     @test getval(tran, key) == val
-                    commit(tran)
                 end
 
                 open(FDBTransaction(db)) do tran
                     push!(chk_closed, tran)
                     @test clearkey(tran, key) == nothing
                     @test getval(tran, key) == nothing
-                    commit(tran)
                 end
 
                 open(FDBTransaction(db)) do tran
@@ -54,6 +53,34 @@ try
 
         for item in chk_closed
             @test !isopen(item)
+        end
+    end
+
+    @testset "auto commit" begin
+        open(FDBCluster()) do cluster
+            open(FDBDatabase(cluster)) do db
+                key = UInt8[0,1,2]
+                val = UInt8[9, 9, 9]
+                open(FDBTransaction(db)) do tran
+                    @test clearkey(tran, key) == nothing
+                    @test getval(tran, key) == nothing
+                    @test setval(tran, key, val) == nothing
+                    @test getval(tran, key) == val
+                    @test commit(tran)
+                    @test_throws FDBError commit(tran)
+                end
+
+                open(FDBTransaction(db)) do tran
+                    @test clearkey(tran, key) == nothing
+                    @test getval(tran, key) == nothing
+                    @test commit(tran)
+                end
+
+                open(FDBTransaction(db)) do tran
+                    @test getval(tran, key) == nothing
+                    @test commit(tran)
+                end
+            end
         end
     end
 
@@ -69,11 +96,9 @@ try
                         valarr[1] = valint
                         open(FDBTransaction(db)) do tran
                             @test setval(tran, key, val) == nothing
-                            @test commit(tran) == nothing
                         end
                         open(FDBTransaction(db)) do tran
                             @test clearkey(tran, key) == nothing
-                            @test commit(tran) == nothing
                         end
                         sleep(rand()/100)
                         open(FDBTransaction(db)) do tran

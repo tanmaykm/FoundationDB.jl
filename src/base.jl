@@ -53,7 +53,6 @@ end
 
 function err_check(result::Union{fdb_future_ptr_t,fdb_error_t}, on_error=throw_on_error)
     with_err_check((x)->x, result, on_error)
-    nothing
 end
 
 """
@@ -215,9 +214,11 @@ modifications made by it.
 mutable struct FDBTransaction
     db::FDBDatabase
     ptr::fdb_transaction_ptr_t
+    autocommit::Bool
+    needscommit::Bool
 
-    function FDBTransaction(db::FDBDatabase)
-        tran = new(db, C_NULL)
+    function FDBTransaction(db::FDBDatabase, autocommit::Bool=true)
+        tran = new(db, C_NULL, autocommit, false)
         finalizer(tran, (tran)->close(tran))
         tran
     end
@@ -227,7 +228,17 @@ function show(io::IO, tran::FDBTransaction)
     print("FDBTransaction - ", (tran.ptr == C_NULL) ? "closed" : "open")
 end
 
-open(fn::Function, tran::FDBTransaction) = try fn(open(tran)) finally close(tran) end
+function open(fn::Function, tran::FDBTransaction)
+    try
+        retry = true
+        while retry
+            fn(open(tran))
+            retry = tran.autocommit && tran.needscommit && !commit(tran)
+        end
+    finally
+        close(tran)
+    end
+end
 function open(tran::FDBTransaction)
     if !isopen(tran)
         @assert is_client_running()
@@ -282,8 +293,15 @@ function retry_on_error(tran::FDBTransaction, future::fdb_future_ptr_t)
     true
 end
 
-function commit(tran::FDBTransaction, on_error=retry_on_error)
-    err_check(fdb_transaction_commit(tran.ptr), on_error)
+function commit(tran::FDBTransaction, on_error=(result)->retry_on_error(tran,result))
+    ret = err_check(fdb_transaction_commit(tran.ptr), on_error)
+    if isa(ret, Bool)
+        ret && (tran.needscommit = false)
+        ret
+    else
+        tran.needscommit = false
+        true
+    end
 end
 
 function get_read_version(tran::FDBTransaction)
@@ -310,15 +328,21 @@ end
 #-------------------------------------------------------------------------------
 
 function setkey(tran::FDBTransaction, key::Vector{UInt8}, val::Vector{UInt8})
-    fdb_transaction_set(tran.ptr, key, Cint(length(key)), val, Cint(length(val)))
+    ret = fdb_transaction_set(tran.ptr, key, Cint(length(key)), val, Cint(length(val)))
+    tran.needscommit = true
+    ret
 end
 
 function clearkey(tran::FDBTransaction, key::Vector{UInt8})
-    fdb_transaction_clear(tran.ptr, key, Cint(length(key)))
+    ret = fdb_transaction_clear(tran.ptr, key, Cint(length(key)))
+    tran.needscommit = true
+    ret
 end
 
 function clearkeyrange(tran::FDBTransaction, begin_key::Vector{UInt8}, end_key::Vector{UInt8})
-    fdb_transaction_clear_range(tran.ptr, begin_key, Cint(length(begin_key)), end_key, Cint(length(end_key)))
+    ret = fdb_transaction_clear_range(tran.ptr, begin_key, Cint(length(begin_key)), end_key, Cint(length(end_key)))
+    tran.needscommit = true
+    ret
 end
 
 copyval(tran::FDBTransaction, present::Bool, val::Vector{UInt8}) = present ? copy(val) : nothing
@@ -337,5 +361,7 @@ function getval(fn::Function, tran::FDBTransaction, key::Vector{UInt8})
 end
 
 function setval(tran::FDBTransaction, key::Vector{UInt8}, val::Vector{UInt8})
-    fdb_transaction_set(tran.ptr, key, Cint(length(key)), val, Cint(length(val)))
+    ret = fdb_transaction_set(tran.ptr, key, Cint(length(key)), val, Cint(length(val)))
+    tran.needscommit = true
+    ret
 end
