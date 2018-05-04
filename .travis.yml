@@ -15,7 +15,7 @@ notifications:
 git:
   depth: 99999999
 before_install:
-  - if [ $TRAVIS_OS_NAME = "linux" ]; then install_fdb.sh; fi
+  - if [ $TRAVIS_OS_NAME = "linux" ]; then ./install_fdb.sh; fi
 
 ## uncomment the following lines to override the default test script
 #script:
