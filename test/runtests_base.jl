@@ -157,20 +157,55 @@ try
                 val2 = UInt8[0, 0, 0]
                 open(FDBTransaction(db)) do tran
                     twatch = 0.0
-                    @sync begin
-                        @async begin
-                            t1 = time()
-                            @test watchkey(tran, key) == nothing
-                            twatch = time() - t1
-                        end
-                        sleep(1)
-                        @test setval(tran, key, val2) == nothing
-                        sleep(1)
-                        @test clearkey(tran, key) == nothing
+                    watchtask = watchkey(tran, key)
+                    timetask = @schedule begin
+                        t1 = time()
+                        wait(watchtask)
+                        twatch = time() - t1
                     end
-                    @show "out of watch in $twatch seconds"
-                    @test twatch > 0.5
+                    sleep(0.5)
+                    @test setval(tran, key, val2) == nothing
+                    sleep(0.5)
+                    @test clearkey(tran, key) == nothing
+                    wait(timetask)
+                    @test twatch > 0.4
                 end
+            end
+        end
+
+        open(FDBCluster()) do cluster
+            open(FDBDatabase(cluster)) do db
+                key = UInt8[0,1,2]
+                val1 = UInt8[0, 0, 0]
+                val2 = UInt8[0, 0, 0]
+
+                # set an initial value
+                open(FDBTransaction(db)) do tran
+                    @test setval(tran, key, val1) == nothing
+                end
+
+                twatch = time()
+                watchtask = nothing
+                # start a watch
+                open(FDBTransaction(db)) do tran
+                    watchtask = watchkey(tran, key)
+                end
+
+                timetask = @schedule begin
+                    t1 = time()
+                    wait(watchtask)
+                    twatch = time() - t1
+                end
+
+                open(FDBTransaction(db)) do tran
+                    sleep(0.5)
+                    @test setval(tran, key, val2) == nothing
+                    sleep(0.5)
+                    @test clearkey(tran, key) == nothing
+                end
+
+                wait(timetask)
+                @test twatch > 0.4
             end
         end
     end

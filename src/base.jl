@@ -360,7 +360,19 @@ function setval(tran::FDBTransaction, key::Vector{UInt8}, val::Vector{UInt8})
     ret
 end
 
-function watchkey(tran::FDBTransaction, key::Vector{UInt8})
-    err_check(fdb_transaction_watch(tran.ptr, key, Cint(length(key))))
+function watchkey_internal(fn::Function, tran::FDBTransaction, key::Vector{UInt8}, on_finish::Function=err_check)
+    future = fdb_transaction_watch(tran.ptr, key, Cint(length(key)))
+    tran.needscommit = true
+    fn(tran, key)
+    err_check(future)
     nothing
+end
+
+function watchkey(tran::FDBTransaction, key::Vector{UInt8}, on_finish::Function=err_check)
+    watchstarted = Future()
+    watchtask = @schedule watchkey_internal(tran, key, on_finish) do tran, key
+        put!(watchstarted, true)
+    end
+    wait(watchstarted)
+    watchtask
 end
