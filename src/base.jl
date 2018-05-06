@@ -359,3 +359,8 @@ function setval(tran::FDBTransaction, key::Vector{UInt8}, val::Vector{UInt8})
     tran.needscommit = true
     ret
 end
+
+function watchkey(tran::FDBTransaction, key::Vector{UInt8})
+    err_check(fdb_transaction_watch(tran.ptr, key, Cint(length(key))))
+    nothing
+end

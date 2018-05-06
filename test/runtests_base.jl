@@ -149,6 +149,31 @@ try
         end
     end
 
+    @testset "watch" begin
+        open(FDBCluster()) do cluster
+            open(FDBDatabase(cluster)) do db
+                key = UInt8[0,1,2]
+                val1 = UInt8[0, 0, 0]
+                val2 = UInt8[0, 0, 0]
+                open(FDBTransaction(db)) do tran
+                    twatch = 0.0
+                    @sync begin
+                        @async begin
+                            t1 = time()
+                            @test watchkey(tran, key) == nothing
+                            twatch = time() - t1
+                        end
+                        sleep(1)
+                        @test setval(tran, key, val2) == nothing
+                        sleep(1)
+                        @test clearkey(tran, key) == nothing
+                    end
+                    @show "out of watch in $twatch seconds"
+                    @test twatch > 0.5
+                end
+            end
+        end
+    end
 
     @testset "stop network" begin
         @test is_client_running()
