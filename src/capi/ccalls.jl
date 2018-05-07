@@ -281,10 +281,12 @@ function fdb_future_get_error(f, out_description)
     ccall((:fdb_future_get_error, fdb_c), fdb_error_t, (fdb_future_ptr_t, Ptr{Cstring}), f, out_description)
 end
 
+#=
 # API has been removed (throws: REMOVED FDB API FUNCTION)
 function fdb_future_is_error(f)
     ccall((:fdb_future_is_error, fdb_c), fdb_bool_t, (fdb_future_ptr_t,), f)
 end
+=#
 
 """
 C function:
@@ -1222,9 +1224,12 @@ function fdb_transaction_get_range(tr, begin_key_name, begin_key_name_length::Ci
     ccall((:fdb_transaction_get_range, fdb_c), fdb_future_ptr_t, (fdb_transaction_ptr_t, Ptr{UInt8}, Cint, Ptr{UInt8}, Cint, Cint), tr, begin_key_name, begin_key_name_length, end_key_name, end_key_name_length, limit)
 end
 
+#=
+API has been removed
 function fdb_transaction_get_range_selector(tr, begin_key_name, begin_key_name_length::Cint, begin_or_equal::fdb_bool_t, begin_offset::Cint, end_key_name, end_key_name_length::Cint, end_or_equal::fdb_bool_t, end_offset::Cint, limit::Cint)
     ccall((:fdb_transaction_get_range_selector, fdb_c), fdb_future_ptr_t, (fdb_transaction_ptr_t, Ptr{UInt8}, Cint, fdb_bool_t, Cint, Ptr{UInt8}, Cint, fdb_bool_t, Cint, Cint), tr, begin_key_name, begin_key_name_length, begin_or_equal, begin_offset, end_key_name, end_key_name_length, end_or_equal, end_offset, limit)
 end
+=#
 
 #------------------------------------------------------------------------------
 # MISCELLANEOUS
