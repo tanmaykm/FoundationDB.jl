@@ -210,6 +210,63 @@ try
         end
     end
 
+    @testset "get key" begin
+        keys = [UInt8[0,1,x] for x in 1:20]
+        val = UInt8[0]
+
+        open(FDBCluster()) do cluster
+            open(FDBDatabase(cluster)) do db
+                # setup all keys
+                open(FDBTransaction(db)) do tran
+                    for key in keys
+                        @test setval(tran, key, val) == nothing
+                    end
+                end
+
+                # get
+                open(FDBTransaction(db)) do tran
+                    emptykey = UInt8[]
+                    key = UInt8[0,0,0]
+                    @test getkey(tran, keysel(FDBKeySel.last_less_or_equal, key)) == emptykey
+                    @test getkey(tran, keysel(FDBKeySel.last_less_than, key)) == emptykey
+                    @test getkey(tran, keysel(FDBKeySel.first_greater_than, key)) == UInt8[0,1,1]
+                    @test getkey(tran, keysel(FDBKeySel.first_greater_or_equal, key)) == UInt8[0,1,1]
+
+                    key = UInt8[0,1,1]
+                    @test getkey(tran, keysel(FDBKeySel.last_less_or_equal, key)) == UInt8[0,1,1]
+                    @test getkey(tran, keysel(FDBKeySel.last_less_than, key)) == emptykey
+                    @test getkey(tran, keysel(FDBKeySel.first_greater_than, key)) == UInt8[0,1,2]
+                    @test getkey(tran, keysel(FDBKeySel.first_greater_or_equal, key)) == UInt8[0,1,1]
+
+                    key = UInt8[0,1,10]
+                    @test getkey(tran, keysel(FDBKeySel.last_less_or_equal, key)) == UInt8[0,1,10]
+                    @test getkey(tran, keysel(FDBKeySel.last_less_than, key)) == UInt8[0,1,9]
+                    @test getkey(tran, keysel(FDBKeySel.first_greater_than, key)) == UInt8[0,1,11]
+                    @test getkey(tran, keysel(FDBKeySel.first_greater_or_equal, key)) == UInt8[0,1,10]
+
+                    key = UInt8[0,1,20]
+                    @test getkey(tran, keysel(FDBKeySel.last_less_or_equal, key)) == UInt8[0,1,20]
+                    @test getkey(tran, keysel(FDBKeySel.last_less_than, key)) == UInt8[0,1,19]
+                    @test getkey(tran, keysel(FDBKeySel.first_greater_than, key)) != UInt8[0,1,20]
+                    @test getkey(tran, keysel(FDBKeySel.first_greater_or_equal, key)) != UInt8[0,1,19]
+
+                    key = UInt8[0,2,0]
+                    @test getkey(tran, keysel(FDBKeySel.last_less_or_equal, key)) == UInt8[0,1,20]
+                    @test getkey(tran, keysel(FDBKeySel.last_less_than, key)) == UInt8[0,1,20]
+                    @test getkey(tran, keysel(FDBKeySel.first_greater_than, key)) != UInt8[0,2,0]
+                    @test getkey(tran, keysel(FDBKeySel.first_greater_or_equal, key)) != UInt8[0,2,0]
+                end
+
+                # clear all keys
+                open(FDBTransaction(db)) do tran
+                    for key in keys
+                        @test clearkey(tran, key) == nothing
+                    end
+                end
+            end
+        end
+    end
+
     @testset "stop network" begin
         @test is_client_running()
         @test stop_client() === nothing

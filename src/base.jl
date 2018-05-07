@@ -326,6 +326,24 @@ end
 #-------------------------------------------------------------------------------
 # Get Set Ops
 #-------------------------------------------------------------------------------
+struct fdb_key_sel_t
+    last_less_than::Symbol
+    last_less_or_equal::Symbol
+    first_greater_than::Symbol
+    first_greater_or_equal::Symbol
+end
+const FDBKeySel = fdb_key_sel_t(:last_less_than, :last_less_or_equal, :first_greater_than, :first_greater_or_equal)
+
+function keysel(mode::Symbol, key::Vector{UInt8})
+    len = Cint(length(key))
+    (mode === FDBKeySel.last_less_than)         ? (key, len, Cint(0), Cint(0)) :
+    (mode === FDBKeySel.last_less_or_equal)     ? (key, len, Cint(1), Cint(0)) :
+    (mode === FDBKeySel.first_greater_than)     ? (key, len, Cint(1), Cint(1)) :
+    (mode === FDBKeySel.first_greater_or_equal) ? (key, len, Cint(0), Cint(1)) :
+    error("unknown key selector $mode")
+end
+
+copyval(tran::FDBTransaction, present::Bool, val::Vector{UInt8}) = present ? copy(val) : nothing
 
 function clearkey(tran::FDBTransaction, key::Vector{UInt8})
     ret = fdb_transaction_clear(tran.ptr, key, Cint(length(key)))
@@ -339,7 +357,18 @@ function clearkeyrange(tran::FDBTransaction, begin_key::Vector{UInt8}, end_key::
     ret
 end
 
-copyval(tran::FDBTransaction, present::Bool, val::Vector{UInt8}) = present ? copy(val) : nothing
+getkey(tran::FDBTransaction, keyselector) = getkey(copyval, tran, keyselector)
+function getkey(fn::Function, tran::FDBTransaction, keyselector)
+    keyptr = Ref{Ptr{UInt8}}(C_NULL)
+    keylen = Ref{Cint}(0)
+    with_err_check(fdb_transaction_get_key(tran.ptr, keyselector...)) do result
+        err_check(fdb_future_get_key(result, keyptr, keylen))
+        key = fn(tran, true, unsafe_wrap(Array, keyptr[], (keylen[],), false))
+        fdb_future_destroy(result)
+        key
+    end::Vector{UInt8}
+end
+
 getval(tran::FDBTransaction, key::Vector{UInt8}) = getval(copyval, tran, key)
 function getval(fn::Function, tran::FDBTransaction, key::Vector{UInt8})
     val = nothing
