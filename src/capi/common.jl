@@ -253,7 +253,7 @@ fdb_future_get_keyvalue_array().
 - value: A pointer to a value.
 - value_length: The length of the value pointed to by value.
 """
-struct FDBKeyValue
+struct fdb_kv_t
     key::Ptr{Void}
     key_length::Cint
     value::Ptr{Void}

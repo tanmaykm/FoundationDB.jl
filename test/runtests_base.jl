@@ -267,6 +267,38 @@ try
         end
     end
 
+    @testset "get range" begin
+        keys = [UInt8[0,1,x] for x in 1:20]
+        val = UInt8[1]
+
+        open(FDBCluster()) do cluster
+            open(FDBDatabase(cluster)) do db
+                # setup all keys
+                open(FDBTransaction(db)) do tran
+                    for key in keys
+                        @test setval(tran, key, val) == nothing
+                    end
+                end
+
+                # get
+                open(FDBTransaction(db)) do tran
+                    kvs = getrange(tran, keysel(FDBKeySel.first_greater_or_equal, keys[1]), keysel(FDBKeySel.last_less_or_equal, keys[10]))
+                    @test length(kvs) == 9
+                    for kv in kvs
+                        @test kv[1] in keys
+                        @test kv[2] == val
+                    end
+                end
+
+                # clear all keys
+                open(FDBTransaction(db)) do tran
+                    @test clearkeyrange(tran, keys[1], UInt8[0,1,21]) == nothing
+                    @test getval(tran, keys[10]) == nothing
+                end
+            end
+        end
+    end
+
     @testset "stop network" begin
         @test is_client_running()
         @test stop_client() === nothing

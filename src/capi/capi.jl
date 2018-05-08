@@ -27,7 +27,8 @@ module CApi
             fdb_transaction_get_range, fdb_get_error, fdb_error_predicate
     export fdb_run_network_in_thread, fdb_future_block_until_ready_in_thread
     export fdb_error_t, fdb_bool_t, fdb_transaction_ptr_t, fdb_future_ptr_t, fdb_cluster_ptr_t, fdb_database_ptr_t, fdb_network_option_t, fdb_cluster_option_t,
-            fdb_database_option_t, fdb_transaction_option_t, fdb_streaming_mode_t, fdb_mutation_type_t, fdb_conflict_range_type_t, fdb_error_predicate_t
+            fdb_database_option_t, fdb_transaction_option_t, fdb_streaming_mode_t, fdb_mutation_type_t, fdb_conflict_range_type_t, fdb_error_predicate_t,
+            fdb_kv_t
 
     # APIs removed
     #export fdb_transaction_get_range_selector, fdb_future_is_error

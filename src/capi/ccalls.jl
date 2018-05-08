@@ -317,8 +317,8 @@ The memory referenced by the result is owned by the FDBFuture object and will be
 valid until either fdb_future_destroy(future) or
 fdb_future_release_memory(future) is called.
 """
-function fdb_future_get_keyvalue_array(f, out_kv, out_count)
-    ccall((:fdb_future_get_keyvalue_array, fdb_c), fdb_error_t, (fdb_future_ptr_t, Ptr{Ptr{FDBKeyValue}}, Ptr{Cint}), f, out_kv, out_count)
+function fdb_future_get_keyvalue_array(f, out_kv, out_count, out_more)
+    ccall((:fdb_future_get_keyvalue_array, fdb_c), fdb_error_t, (fdb_future_ptr_t, Ptr{Ptr{Void}}, Ptr{Cint}, Ptr{fdb_bool_t}), f, out_kv, out_count, out_more)
 end
 
 """
@@ -1220,9 +1220,26 @@ Parameters:
 - reverse: If non-zero, key-value pairs will be returned in reverse
     lexicographical order beginning at the end of the range.
 """
+function fdb_transaction_get_range(tr,
+        begin_key_name, begin_key_name_length::Cint, begin_or_equal::fdb_bool_t, begin_offset::Cint,
+        end_key_name, end_key_name_length::Cint, end_or_equal::fdb_bool_t, end_offset::Cint,
+        limit::Cint=Cint(0), target_bytes::Cint=Cint(0), streaming_mode::Cint=FDBStreamingMode.WANT_ALL, iteration::Cint=Cint(0), snapshot::Cint=Cint(0), reverse::fdb_bool_t=fdb_bool_t(0))
+    ccall((:fdb_transaction_get_range, fdb_c), fdb_future_ptr_t, 
+        (fdb_transaction_ptr_t,
+        Ptr{UInt8}, Cint, fdb_bool_t, Cint,
+        Ptr{UInt8}, Cint, fdb_bool_t, Cint,
+        Cint, Cint, Cint, Cint, Cint, fdb_bool_t),
+        tr,
+        begin_key_name, begin_key_name_length, begin_or_equal, begin_offset,
+        end_key_name, end_key_name_length, end_or_equal, end_offset,
+        limit, target_bytes, streaming_mode, iteration, snapshot, reverse)
+end
+#=
+API signature has changed
 function fdb_transaction_get_range(tr, begin_key_name, begin_key_name_length::Cint, end_key_name, end_key_name_length::Cint, limit::Cint)
     ccall((:fdb_transaction_get_range, fdb_c), fdb_future_ptr_t, (fdb_transaction_ptr_t, Ptr{UInt8}, Cint, Ptr{UInt8}, Cint, Cint), tr, begin_key_name, begin_key_name_length, end_key_name, end_key_name_length, limit)
 end
+=#
 
 #=
 API has been removed

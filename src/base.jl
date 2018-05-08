@@ -383,6 +383,65 @@ function getval(fn::Function, tran::FDBTransaction, key::Vector{UInt8})
     val
 end
 
+copykeyval(tran::FDBTransaction, key::Vector{UInt8}, val::Vector{UInt8}) = (copy(key),copy(val))
+function copykeyval(tran::FDBTransaction, keyval::fdb_kv_t)
+    key = unsafe_wrap(Array, convert(Ptr{UInt8}, keyval.key), (keyval.key_length,), false)
+    val = unsafe_wrap(Array, convert(Ptr{UInt8}, keyval.value), (keyval.value_length,), false)
+    copykeyval(tran, key, val)
+end
+collectkeyval(tran::FDBTransaction, keyval::fdb_kv_t, into) = push!(into, copykeyval(tran, keyval))
+function collectkeyval(tran::FDBTransaction, keyvals::Vector{fdb_kv_t}, into)
+    for keyval in keyvals
+        collectkeyval(tran, keyval, into)
+    end
+    into
+end
+function getrange(tran::FDBTransaction, begin_keysel, end_keysel, into=Vector{Tuple{Vector{UInt8},Vector{UInt8}}}(); kwargs...)
+    getrange(tran, begin_keysel, end_keysel; kwargs...) do tran, keyval
+        collectkeyval(tran, keyval, into)
+    end
+    into
+end
+function getrange(fn::Function, tran::FDBTransaction, begin_keysel, end_keysel; limit::Integer=0, target_bytes::Integer=0,
+        streaming_mode::Cint=FDBStreamingMode.WANT_ALL, iteration::Integer=0, snapshot::Integer=0, reverse::Bool=false)
+    with_err_check(fdb_transaction_get_range(tran.ptr,
+        begin_keysel[1], begin_keysel[2], begin_keysel[3], begin_keysel[4],
+        end_keysel[1], end_keysel[2], end_keysel[3], end_keysel[4],
+        Cint(limit), Cint(target_bytes), Cint(streaming_mode), Cint(iteration), Cint(snapshot), fdb_bool_t(reverse ? 1 : 0))) do result
+
+        firstiter = true
+        more = Ref{fdb_bool_t}(false)
+        count = Ref{Cint}(0)
+        kvptr = Ref{Ptr{Void}}(C_NULL)
+
+        while firstiter || Bool(more[])
+            firstiter = false
+            err_check(fdb_future_get_keyvalue_array(result, kvptr, count, more))
+            if count[] > 0
+                total_size = (sizeof(Ptr{Void}) + sizeof(Cint)) * 2 * count[]
+                ptr = convert(Ptr{UInt8}, kvptr[])
+                valarr = Vector{fdb_kv_t}()
+                # the fields are byte packed
+                for idx in 1:(count[])
+                    _key = unsafe_load(convert(Ptr{Ptr{Void}}, ptr))
+                    ptr += sizeof(Ptr{Void})
+                    _key_length = unsafe_load(convert(Ptr{Cint}, ptr))
+                    ptr += sizeof(Cint)
+                    _value = unsafe_load(convert(Ptr{Ptr{Void}}, ptr))
+                    ptr += sizeof(Ptr{Void})
+                    _value_length = unsafe_load(convert(Ptr{Cint}, ptr))
+                    ptr += sizeof(Cint)
+                    push!(valarr, fdb_kv_t(_key, _key_length, _value, _value_length))
+                end
+                fn(tran, valarr)
+            end
+            @show more[], count[]
+        end
+        fdb_future_destroy(result)
+    end
+    nothing
+end
+
 function setval(tran::FDBTransaction, key::Vector{UInt8}, val::Vector{UInt8})
     ret = fdb_transaction_set(tran.ptr, key, Cint(length(key)), val, Cint(length(val)))
     tran.needscommit = true
