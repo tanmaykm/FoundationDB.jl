@@ -43,6 +43,23 @@ end
 #-------------------------------------------------------------------------------
 # Working with futures and starting/stopping network
 #-------------------------------------------------------------------------------
+"""
+An opaque type that represents a Future in the FoundationDB C API.
+
+Most functions in the FoundationDB API are asynchronous, meaning that they may
+return to the caller before actually delivering their result. These functions
+always return FDBFuture*. An FDBFuture object represents a result value or error
+to be delivered at some future time. You can wait for a Future to be “ready” –
+to have a value or error delivered – by setting a callback function, or by
+blocking a thread, or by polling. Once a Future is ready, you can extract either
+an error code or a value of the appropriate type (the documentation for the
+original function will tell you which fdb_future_get_*() function you should
+call).
+"""
+const FDBFuture = Ref{fdb_future_ptr_t}
+
+cancel(future::FDBFuture) = fdb_future_cancel(future[])
+
 block_until(future::fdb_future_ptr_t) = (Bool(fdb_future_is_ready(future)) || wait(@schedule fdb_future_block_until_ready_in_thread(future)); future)
 block_until(errcode) = errcode
 
@@ -113,7 +130,7 @@ mutable struct FDBCluster
 end
 
 function show(io::IO, cluster::FDBCluster)
-    print("FDBCluster(", cluster.cluster_file, ") - ", (cluster.ptr == C_NULL) ? "closed" : "open")
+    print(io, "FDBCluster(", cluster.cluster_file, ") - ", (cluster.ptr == C_NULL) ? "closed" : "open")
 end
 
 open(fn::Function, cluster::FDBCluster) = try fn(open(cluster)) finally close(cluster) end
@@ -159,7 +176,7 @@ mutable struct FDBDatabase
 end
 
 function show(io::IO, db::FDBDatabase)
-    print("FDBDatabase(", db.name, ") - ", (db.ptr == C_NULL) ? "closed" : "open")
+    print(io, "FDBDatabase(", db.name, ") - ", (db.ptr == C_NULL) ? "closed" : "open")
 end
 
 open(fn::Function, db::FDBDatabase) = try fn(open(db)) finally close(db) end
@@ -225,7 +242,7 @@ mutable struct FDBTransaction
 end
 
 function show(io::IO, tran::FDBTransaction)
-    print("FDBTransaction - ", (tran.ptr == C_NULL) ? "closed" : "open")
+    print(io, "FDBTransaction - ", (tran.ptr == C_NULL) ? "closed" : "open")
 end
 
 function open(fn::Function, tran::FDBTransaction)
@@ -436,7 +453,6 @@ function getrange(fn::Function, tran::FDBTransaction, begin_keysel, end_keysel; 
                 end
                 fn(tran, valarr)
             end
-            @show more[], count[]
         end
         fdb_future_destroy(result)
     end
@@ -449,17 +465,18 @@ function setval(tran::FDBTransaction, key::Vector{UInt8}, val::Vector{UInt8})
     ret
 end
 
-function watchkey_internal(fn::Function, tran::FDBTransaction, key::Vector{UInt8}, on_finish::Function=err_check)
+function watchkey_internal(fn::Function, tran::FDBTransaction, key::Vector{UInt8}, on_finish::Function, handle::Union{Void,FDBFuture})
     future = fdb_transaction_watch(tran.ptr, key, Cint(length(key)))
+    (handle === nothing) || (handle[] = future)
     tran.needscommit = true
     fn(tran, key)
     err_check(future)
     nothing
 end
 
-function watchkey(tran::FDBTransaction, key::Vector{UInt8}, on_finish::Function=err_check)
+function watchkey(tran::FDBTransaction, key::Vector{UInt8}; on_finish::Function=err_check, handle::Union{Void,FDBFuture}=nothing)
     watchstarted = Future()
-    watchtask = @schedule watchkey_internal(tran, key, on_finish) do tran, key
+    watchtask = @schedule watchkey_internal(tran, key, on_finish, handle) do tran, key
         put!(watchstarted, true)
     end
     wait(watchstarted)

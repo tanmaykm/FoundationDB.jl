@@ -225,21 +225,6 @@ const fdb_conflict_range_type_t = Cint
 const fdb_error_predicate_t = Cint
 
 """
-An opaque type that represents a Future in the FoundationDB C API.
-
-Most functions in the FoundationDB API are asynchronous, meaning that they may
-return to the caller before actually delivering their result. These functions
-always return FDBFuture*. An FDBFuture object represents a result value or error
-to be delivered at some future time. You can wait for a Future to be “ready” –
-to have a value or error delivered – by setting a callback function, or by
-blocking a thread, or by polling. Once a Future is ready, you can extract either
-an error code or a value of the appropriate type (the documentation for the
-original function will tell you which fdb_future_get_*() function you should
-call).
-"""
-const FDBFuture = Void
-
-"""
 A pointer to a function which takes FDBFuture* and void* and returns void.
 """
 const FDBCallback = Ptr{Void}

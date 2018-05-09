@@ -195,6 +195,22 @@ try
                     @test clearkey(tran, key) == nothing
                     wait(timetask)
                     @test twatch > 0.4
+
+                    watchhandle = FDBFuture()
+                    watchtask = watchkey(tran, key; handle=watchhandle)
+                    sleep(0.2)
+                    @test istaskstarted(watchtask)
+                    @test !istaskdone(watchtask)
+                    cancel(watchhandle)
+                    sleep(0.2)
+                    @test istaskdone(watchtask)
+                    try
+                        wait(watchtask)
+                        error("watchtask should have failed!")
+                    catch ex
+                        @test isa(ex, FDBError)
+                        @test ex.code == 1101 # Asynchronous operation cancelled
+                    end
                 end
             end
         end

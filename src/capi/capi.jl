@@ -14,7 +14,6 @@ module CApi
 
     export FDB_API_VERSION
     export FDBNetworkOption, FDBClusterOption, FDBDatabaseOption, FDBTransactionOption, FDBStreamingMode, FDBMutationType, FDBConflictRangeType, FDBErrorPredicate
-    export FDBFuture, FDBCallback
     export fdb_select_api_version_impl, fdb_select_api_version, fdb_get_max_api_version, fdb_get_client_version, fdb_network_set_option, fdb_setup_network,
             fdb_run_network, fdb_stop_network, fdb_add_network_thread_completion_hook, fdb_future_cancel, fdb_future_destroy, fdb_future_block_until_ready,
             fdb_future_is_ready, fdb_future_set_callback, fdb_future_release_memory, fdb_future_get_error, fdb_future_get_keyvalue_array,
