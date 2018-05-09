@@ -43,7 +43,7 @@ end
 #-------------------------------------------------------------------------------
 # Working with futures and starting/stopping network
 #-------------------------------------------------------------------------------
-block_until(future::fdb_future_ptr_t) = (wait(@schedule fdb_future_block_until_ready_in_thread(future)); future)
+block_until(future::fdb_future_ptr_t) = (Bool(fdb_future_is_ready(future)) || wait(@schedule fdb_future_block_until_ready_in_thread(future)); future)
 block_until(errcode) = errcode
 
 function with_err_check(on_success, result::Union{fdb_future_ptr_t,fdb_error_t}, on_error=throw_on_error)
@@ -276,6 +276,7 @@ end
 
 function cancel(tran::FDBTransaction)
     fdb_transaction_cancel(tran.ptr)
+    tran.needscommit = false
     nothing
 end
 

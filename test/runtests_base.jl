@@ -84,6 +84,32 @@ try
         end
     end
 
+    @testset "cancel" begin
+        open(FDBCluster()) do cluster
+            open(FDBDatabase(cluster)) do db
+                key = UInt8[0,1,2]
+                val = UInt8[9, 9, 9]
+                open(FDBTransaction(db)) do tran
+                    @test setval(tran, key, val) == nothing
+                    @test cancel(tran) == nothing
+                end
+                open(FDBTransaction(db)) do tran
+                    @test getval(tran, key) == nothing
+                end
+                open(FDBTransaction(db)) do tran
+                    @test setval(tran, key, val) == nothing
+                    @test commit(tran)
+                    @test cancel(tran) == nothing
+                end
+                open(FDBTransaction(db)) do tran
+                    @test getval(tran, key) == val
+                    @test clearkey(tran, key) == nothing
+                end
+            end
+        end
+    end
+
+
     @testset "parallel updates" begin
         sumval = 0
         function do_updates()
