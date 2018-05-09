@@ -299,6 +299,120 @@ try
         end
     end
 
+    @testset "atomic" begin
+        key    = UInt8[0,1,2]
+        keymax = UInt8[0,1,3]
+        keymin = UInt8[0,1,4]
+        keyand = UInt8[0,1,5]
+        keyor  = UInt8[0,1,6]
+        keyxor = UInt8[0,1,7]
+
+        open(FDBCluster()) do cluster
+            open(FDBDatabase(cluster)) do db
+                @testset "atomic add" begin
+                    # clear key to start with
+                    open(FDBTransaction(db)) do tran
+                        @test clearkey(tran, key) == nothing
+                    end
+                    @sync begin
+                        for idx in 1:10
+                            @async open(FDBTransaction(db)) do tran
+                                atomic_add(tran, key, 1)
+                            end
+                        end
+                        for idx in 1:5
+                            @async open(FDBTransaction(db)) do tran
+                                atomic_add(tran, key, -1)
+                            end
+                        end
+                    end
+                    open(FDBTransaction(db)) do tran
+                        val = getval(tran, key)
+                        @test unsafe_load(convert(Ptr{Int}, pointer(val))) == 5
+                        @test clearkey(tran, key) == nothing
+                    end
+                end
+
+                @testset "atomic integer min max" begin
+                    # clear key to start with
+                    open(FDBTransaction(db)) do tran
+                        @test clearkey(tran, keymax) == nothing
+                        @test clearkey(tran, keymin) == nothing
+                    end
+                    vals = rand(Cuint, 10)
+                    @sync begin
+                        for idx in 1:10
+                            @async open(FDBTransaction(db)) do tran
+                                atomic_max(tran, keymax, vals[idx])
+                                atomic_min(tran, keymin, vals[idx])
+                            end
+                        end
+                    end
+                    open(FDBTransaction(db)) do tran
+                        val = getval(tran, keymin)
+                        @test unsafe_load(convert(Ptr{Cuint}, pointer(val))) == minimum(vals)
+                        @test clearkey(tran, keymin) == nothing
+
+                        val = getval(tran, keymax)
+                        @test unsafe_load(convert(Ptr{Cuint}, pointer(val))) == maximum(vals)
+                        @test clearkey(tran, keymax) == nothing
+                    end
+                end
+
+                @testset "atomic bytes min max and or xor" begin
+                    # clear key to start with
+                    open(FDBTransaction(db)) do tran
+                        @test setval(tran, keymax, zeros(UInt8, 10)) == nothing
+                        @test setval(tran, keymin, ones(UInt8, 10) * typemax(UInt8)) == nothing
+                    end
+                    open(FDBTransaction(db)) do tran
+                        @test getval(tran, keymax) == zeros(UInt8, 10)
+                        @test getval(tran, keymin) == ones(UInt8, 10) * typemax(UInt8)
+                    end
+                    vals = [rand(UInt8,10) for x in 1:10]
+                    maxval = zeros(UInt8, 10)
+                    minval = ones(UInt8, 10) * typemax(UInt8)
+                    andval = vals[1]
+                    orval = vals[1]
+                    xorval = vals[1]
+                    open(FDBTransaction(db)) do tran
+                        @test setval(tran, keyand, andval) == nothing
+                        @test setval(tran, keyor, orval) == nothing
+                        @test setval(tran, keyxor, xorval) == nothing
+                    end
+                    for val in vals
+                        for idx in 1:length(val)
+                            (convert(String, val) > convert(String, maxval)) && (maxval = val)
+                            (convert(String, val) < convert(String, minval)) && (minval = val)
+                            if idx > 1
+                                andval = andval .& val
+                                orval = orval .| val
+                                xorval = xorval .⊻ val
+                            end
+                        end
+                    end
+                    @sync begin
+                        for idx in 1:10
+                            @async open(FDBTransaction(db)) do tran
+                                atomic_max(tran, keymax, vals[idx])
+                                atomic_min(tran, keymin, vals[idx])
+                                atomic_and(tran, keyand, vals[idx])
+                                atomic_or(tran, keyor, vals[idx])
+                                atomic_xor(tran, keyxor, vals[idx])
+                            end
+                        end
+                    end
+                    open(FDBTransaction(db)) do tran
+                        for (k,v) in zip([keymin, keymax, keyand, keyor, keyxor], [minval, maxval, andval, orval, xorval])
+                            @test getval(tran, k) == v
+                            @test clearkey(tran, k) == nothing
+                        end
+                    end
+                end
+            end
+        end
+    end
+
     @testset "stop network" begin
         @test is_client_running()
         @test stop_client() === nothing

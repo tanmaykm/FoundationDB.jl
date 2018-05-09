@@ -464,3 +464,30 @@ function watchkey(tran::FDBTransaction, key::Vector{UInt8}, on_finish::Function=
     wait(watchstarted)
     watchtask
 end
+
+function atomic(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}, op::Cint)
+    tran.needscommit = true
+    fdb_transaction_atomic_op(tran.ptr, key, Cint(length(key)), param, Cint(length(param)), op)
+end
+
+function atomic_add(tran::FDBTransaction, key::Vector{UInt8}, param::Integer)
+    leparam = htol(param) # ensure param is little-endian, unsigned or signed in two's complement format
+    param_bytes = unsafe_wrap(Array, convert(Ptr{UInt8}, pointer_from_objref(leparam)), (sizeof(leparam),), false)
+    atomic(tran, key, param_bytes, FDBMutationType.ADD)
+end
+
+function atomic_max(tran::FDBTransaction, key::Vector{UInt8}, param::Cuint)
+    param_bytes = unsafe_wrap(Array, convert(Ptr{UInt8}, pointer_from_objref(param)), (sizeof(param),), false)
+    atomic(tran, key, param_bytes, FDBMutationType.MAX)
+end
+
+function atomic_min(tran::FDBTransaction, key::Vector{UInt8}, param::Cuint)
+    param_bytes = unsafe_wrap(Array, convert(Ptr{UInt8}, pointer_from_objref(param)), (sizeof(param),), false)
+    atomic(tran, key, param_bytes, FDBMutationType.MIN)
+end
+
+atomic_and(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.AND)
+atomic_or(tran::FDBTransaction,  key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.OR)
+atomic_xor(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.XOR)
+atomic_max(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.BYTE_MAX)
+atomic_min(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.BYTE_MIN)
