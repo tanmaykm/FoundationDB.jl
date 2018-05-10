@@ -10,7 +10,7 @@ end
     @test !is_client_running()
     @test start_client() === nothing
     @test is_client_running()
-end
+end # testset "start network"
 
 try
     @testset "basic julia apis" begin
@@ -54,7 +54,7 @@ try
         for item in chk_closed
             @test !isopen(item)
         end
-    end
+    end # testset "basic julia apis"
 
     @testset "auto commit" begin
         open(FDBCluster()) do cluster
@@ -82,7 +82,7 @@ try
                 end
             end
         end
-    end
+    end # testset "auto commit"
 
     @testset "cancel" begin
         open(FDBCluster()) do cluster
@@ -107,7 +107,7 @@ try
                 end
             end
         end
-    end
+    end # testset "cancel"
 
 
     @testset "parallel updates" begin
@@ -145,7 +145,7 @@ try
 
         println("sumval in parallel updates = ", sumval)
         @test 0 <= sumval <= (5050 * 1.5) # series sum of 1:100 = 5050
-    end
+    end # testset "parallel updates"
 
     @testset "large key value" begin
         open(FDBCluster()) do cluster
@@ -173,7 +173,7 @@ try
                 end
             end
         end
-    end
+    end # testset "large key value"
 
     @testset "watch" begin
         open(FDBCluster()) do cluster
@@ -227,10 +227,9 @@ try
                 end
 
                 twatch = time()
-                watchtask = nothing
                 # start a watch
-                open(FDBTransaction(db)) do tran
-                    watchtask = watchkey(tran, key)
+                watchtask = open(FDBTransaction(db)) do tran
+                    watchkey(tran, key)
                 end
 
                 timetask = @schedule begin
@@ -250,7 +249,7 @@ try
                 @test twatch > 0.4
             end
         end
-    end
+    end # testset "watch"
 
     @testset "get key" begin
         keys = [UInt8[0,1,x] for x in 1:20]
@@ -307,7 +306,7 @@ try
                 end
             end
         end
-    end
+    end # testset "get key"
 
     @testset "get range" begin
         keys = [UInt8[0,1,x] for x in 1:20]
@@ -339,7 +338,7 @@ try
                 end
             end
         end
-    end
+    end # testset "get range"
 
     @testset "atomic" begin
         key    = UInt8[0,1,2]
@@ -373,7 +372,7 @@ try
                         @test unsafe_load(convert(Ptr{Int}, pointer(val))) == 5
                         @test clearkey(tran, key) == nothing
                     end
-                end
+                end # testset "atomic add"
 
                 @testset "atomic integer min max" begin
                     # clear key to start with
@@ -399,7 +398,7 @@ try
                         @test unsafe_load(convert(Ptr{Cuint}, pointer(val))) == maximum(vals)
                         @test clearkey(tran, keymax) == nothing
                     end
-                end
+                end # testset "atomic integer min max"
 
                 @testset "atomic bytes min max and or xor" begin
                     # clear key to start with
@@ -450,10 +449,62 @@ try
                             @test clearkey(tran, k) == nothing
                         end
                     end
+                end # testset "atomic bytes min max and or xor"
+            end
+        end
+    end # testset "atomic"
+
+    @testset "conflicts" begin
+        function test_conflict(db, my_trigger::Channel{Void}, other_trigger::Channel{Void})
+            open(FDBTransaction(db)) do tran
+                # add conflict range
+                conflict(tran, UInt8[0,1,2], UInt8[0,1,3], FDBConflictRangeType.READ)
+                conflict(tran, UInt8[0,1,2], UInt8[0,1,3], FDBConflictRangeType.WRITE)
+
+                # read key, ensure it is there
+                if getval(tran, UInt8[0,1,2]) == nothing
+                    error("not found")
+                end
+
+                # send trigger to other transaction
+                put!(other_trigger, nothing)
+
+                # wait for other transaction to also read the key
+                wait(my_trigger)
+
+                # delete the key and try to commit
+                clearkey(tran, UInt8[0,1,2])
+            end
+        end
+
+        open(FDBCluster()) do cluster
+            open(FDBDatabase(cluster)) do db
+                open(FDBTransaction(db)) do tran
+                    setval(tran, UInt8[0,1,2], UInt8[0,1,2])
+                end
+
+                c1 = Channel{Void}(1)
+                c2 = Channel{Void}(1)
+
+                try
+                    @sync begin
+                        @async test_conflict(db, c1, c2)
+                        @async test_conflict(db, c2, c1)
+                    end
+                    error("must throw not found")
+                catch ex
+                    @test isa(ex, CompositeException)
+                    @test length(ex.exceptions) == 1
+                    @test isa(ex.exceptions[1], CapturedException)
+                    @test ex.exceptions[1].ex.msg == "not found"
+                end
+
+                open(FDBTransaction(db)) do tran
+                    clearkey(tran, UInt8[0,1,2])
                 end
             end
         end
-    end
+    end # testset "conflicts"
 
     @testset "stop network" begin
         @test is_client_running()

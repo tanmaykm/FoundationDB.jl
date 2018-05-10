@@ -248,10 +248,12 @@ end
 function open(fn::Function, tran::FDBTransaction)
     try
         retry = true
+        result = nothing
         while retry
-            fn(open(tran))
+            result = fn(open(tran))
             retry = tran.autocommit && tran.needscommit && !commit(tran)
         end
+        result
     finally
         close(tran)
     end
@@ -509,3 +511,7 @@ atomic_or(tran::FDBTransaction,  key::Vector{UInt8}, param::Vector{UInt8}) = ato
 atomic_xor(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.XOR)
 atomic_max(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.BYTE_MAX)
 atomic_min(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.BYTE_MIN)
+
+function conflict(tran::FDBTransaction, begin_key::Vector{UInt8}, end_key::Vector{UInt8}, conflict_type::fdb_conflict_range_type_t)
+    err_check(fdb_transaction_add_conflict_range(tran.ptr, begin_key, Cint(length(begin_key)), end_key, Cint(length(end_key)), conflict_type))
+end
