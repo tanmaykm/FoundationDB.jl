@@ -6,7 +6,7 @@ export FDBCluster, FDBDatabase, FDBTransaction, FDBError, FDBKeySel, FDBFuture, 
 export FDBNetworkOption, FDBDatabaseOption, FDBTransactionOption, FDBMutationType, FDBStreamingMode, FDBConflictRangeType
 export reset, cancel, commit, get_read_version, set_read_version, get_committed_version
 export clearkey, clearkeyrange, getval, setval, watchkey, keysel, getkey, getrange, conflict
-export atomic, atomic_add, atomic_and, atomic_or, atomic_xor, atomic_max, atomic_min
+export atomic, atomic_add, atomic_and, atomic_or, atomic_xor, atomic_max, atomic_min, atomic_setval, prep_atomic_key!
 
 include("capi/capi.jl")
 include("base.jl")

@@ -25,6 +25,10 @@ try
                 @test db.name == "DB"
                 @test db.ptr !== C_NULL
 
+                open(FDBTransaction(db)) do tran
+                    @test clearkeyrange(tran, UInt8[0], UInt8[2]) == nothing
+                end
+
                 key = UInt8[0,1,2]
                 val = UInt8[9, 9, 9]
 
@@ -505,6 +509,42 @@ try
             end
         end
     end # testset "conflicts"
+
+    @testset "versionstamp" begin
+        open(FDBCluster()) do cluster
+            open(FDBDatabase(cluster)) do db
+                open(FDBTransaction(db; trackversionstamp=true)) do tran
+                    @test tran.versionstamp === nothing
+                    atomic_setval(tran, zeros(UInt8, 8), ones(UInt8, 16), FDBMutationType.SET_VERSIONSTAMPED_VALUE)
+                    commit(tran)
+                    @test tran.versionstamp !== nothing
+                    v1 = tran.versionstamp
+
+                    reset(tran)
+                    clearkey(tran, zeros(UInt8, 8))
+                    commit(tran)
+                    @test tran.versionstamp !== nothing
+                    @test tran.versionstamp == v1
+
+                    reset(tran)
+                    key = UInt8[0,1,2]
+                    prep_atomic_key!(key, 2)
+                    atomic_setval(tran, key, zeros(UInt8, 5), FDBMutationType.SET_VERSIONSTAMPED_KEY)
+                    commit(tran)
+                    @test tran.versionstamp !== nothing
+                    @test tran.versionstamp != v1
+                    v2 = tran.versionstamp
+
+                    reset(tran)
+                    key = zeros(UInt8, 13)
+                    key[2:11] = v2
+                    key[12:13] = UInt8[1,2]
+                    @test getval(tran, key) == zeros(UInt8, 5)
+                    clearkey(tran, key)
+                end
+            end
+        end
+    end
 
     @testset "stop network" begin
         @test is_client_running()

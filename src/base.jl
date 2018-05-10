@@ -231,11 +231,14 @@ modifications made by it.
 mutable struct FDBTransaction
     db::FDBDatabase
     ptr::fdb_transaction_ptr_t
-    autocommit::Bool
     needscommit::Bool
+    versionstamp::Union{Void,Vector{UInt8}}
+    autocommit::Bool
+    trackversionstamp::Bool
+    versionstampfuture::Union{Void,fdb_future_ptr_t}
 
-    function FDBTransaction(db::FDBDatabase, autocommit::Bool=true)
-        tran = new(db, C_NULL, autocommit, false)
+    function FDBTransaction(db::FDBDatabase; autocommit::Bool=true, trackversionstamp::Bool=false)
+        tran = new(db, C_NULL, false, nothing, autocommit, trackversionstamp, nothing)
         finalizer(tran, (tran)->close(tran))
         tran
     end
@@ -315,8 +318,20 @@ end
 
 function commit(tran::FDBTransaction, on_error=(result)->retry_on_error(tran,result))
     ret = err_check(fdb_transaction_commit(tran.ptr), on_error)
+
+    if (!isa(ret, Bool) || ret) && tran.trackversionstamp && (tran.versionstampfuture !== nothing)
+        keyptr = Ref{Ptr{UInt8}}(C_NULL)
+        keylen = Ref{Cint}(0)
+        err_check(fdb_future_get_key(tran.versionstampfuture, keyptr, keylen))
+        tran.versionstamp = copy(unsafe_wrap(Array, keyptr[], (keylen[],), false))
+        fdb_future_destroy(tran.versionstampfuture)
+        tran.versionstampfuture = nothing
+    end
+
     if isa(ret, Bool)
-        ret && (tran.needscommit = false)
+        if ret
+            tran.needscommit = false
+        end
         ret
     else
         tran.needscommit = false
@@ -511,6 +526,21 @@ atomic_or(tran::FDBTransaction,  key::Vector{UInt8}, param::Vector{UInt8}) = ato
 atomic_xor(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.XOR)
 atomic_max(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.BYTE_MAX)
 atomic_min(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.BYTE_MIN)
+function prep_atomic_key!(key::Vector{UInt8}, versionpos::Integer)
+    pos = htol(UInt16(versionpos-1))  # make it 0 based index
+    pos_bytes = unsafe_wrap(Array, convert(Ptr{UInt8}, pointer_from_objref(pos)), (sizeof(pos),), false)
+    splice!(key, versionpos:(versionpos-1), zeros(UInt8, 10))
+    splice!(key, (length(key)+1):length(key), pos_bytes)
+    key
+end
+function atomic_setval(tran::FDBTransaction, key::Vector{UInt8}, val::Vector{UInt8}, op::Cint)
+    @assert (op == FDBMutationType.SET_VERSIONSTAMPED_KEY) || (op == FDBMutationType.SET_VERSIONSTAMPED_VALUE)
+    atomic(tran, key, val, op)
+    if tran.trackversionstamp && (tran.versionstampfuture === nothing)
+        tran.versionstampfuture = fdb_transaction_get_versionstamp(tran.ptr)
+    end
+    nothing
+end
 
 function conflict(tran::FDBTransaction, begin_key::Vector{UInt8}, end_key::Vector{UInt8}, conflict_type::fdb_conflict_range_type_t)
     err_check(fdb_transaction_add_conflict_range(tran.ptr, begin_key, Cint(length(begin_key)), end_key, Cint(length(end_key)), conflict_type))
