@@ -327,12 +327,17 @@ try
 
                 # get
                 open(FDBTransaction(db)) do tran
-                    kvs = getrange(tran, keysel(FDBKeySel.first_greater_or_equal, keys[1]), keysel(FDBKeySel.last_less_or_equal, keys[10]))
+                    kvs, more = getrange(tran, keysel(FDBKeySel.first_greater_or_equal, keys[1]), keysel(FDBKeySel.last_less_or_equal, keys[10]))
                     @test length(kvs) == 9
+                    @test !more
                     for kv in kvs
                         @test kv[1] in keys
                         @test kv[2] == val
                     end
+
+                    kvs, more = getrange(tran, keysel(FDBKeySel.first_greater_or_equal, keys[1]), keysel(FDBKeySel.last_less_or_equal, keys[10]); limit=1)
+                    @test length(kvs) == 1
+                    @test more
                 end
 
                 # clear all keys
