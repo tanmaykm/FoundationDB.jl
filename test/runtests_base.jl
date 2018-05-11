@@ -377,8 +377,7 @@ try
                         end
                     end
                     open(FDBTransaction(db)) do tran
-                        val = getval(tran, key)
-                        @test unsafe_load(convert(Ptr{Int}, pointer(val))) == 5
+                        @test atomic_integer(Int, getval(tran, key)) == 5
                         @test clearkey(tran, key) == nothing
                     end
                 end # testset "atomic add"
@@ -399,12 +398,10 @@ try
                         end
                     end
                     open(FDBTransaction(db)) do tran
-                        val = getval(tran, keymin)
-                        @test unsafe_load(convert(Ptr{Cuint}, pointer(val))) == minimum(vals)
+                        @test atomic_integer(Cuint, getval(tran, keymin)) == minimum(vals)
                         @test clearkey(tran, keymin) == nothing
 
-                        val = getval(tran, keymax)
-                        @test unsafe_load(convert(Ptr{Cuint}, pointer(val))) == maximum(vals)
+                        @test atomic_integer(Cuint, getval(tran, keymax)) == maximum(vals)
                         @test clearkey(tran, keymax) == nothing
                     end
                 end # testset "atomic integer min max"

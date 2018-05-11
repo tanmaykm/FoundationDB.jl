@@ -518,6 +518,13 @@ function atomic_min(tran::FDBTransaction, key::Vector{UInt8}, param::Cuint)
     atomic(tran, key, param_bytes, FDBMutationType.MIN)
 end
 
+"""
+Loads the value read as an integer type.
+
+Suitable for reading back values for keys used with `atomic_add`, `atomic_max`, `atomic_min` operations.
+"""
+atomic_integer(::Type{T}, val::Vector{UInt8}) where {T <: Integer} = unsafe_load(convert(Ptr{T}, pointer(val)))
+
 atomic_and(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.AND)
 atomic_or(tran::FDBTransaction,  key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.OR)
 atomic_xor(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.XOR)
