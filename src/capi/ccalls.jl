@@ -159,7 +159,7 @@ In Julia, if the network is being run with `@threadcall`, this method must not
 be used, because calling back to Julia is not allowed in `@threadcall`.
 """
 function fdb_add_network_thread_completion_hook(hook, hook_parameter)
-    ccall((:fdb_add_network_thread_completion_hook, fdb_c), fdb_error_t, (Ptr{Void}, Ptr{Void}), hook, hook_parameter)
+    ccall((:fdb_add_network_thread_completion_hook, fdb_c), fdb_error_t, (Ptr{Nothing}, Ptr{Nothing}), hook, hook_parameter)
 end
 
 #------------------------------------------------------------------------------
@@ -176,7 +176,7 @@ effect. Note that even if a future is not ready, its associated asynchronous
 operation may have succesfully completed and be unable to be cancelled.
 """
 function fdb_future_cancel(f)
-    ccall((:fdb_future_cancel, fdb_c), Void, (fdb_future_ptr_t,), f)
+    ccall((:fdb_future_cancel, fdb_c), Nothing, (fdb_future_ptr_t,), f)
 end
 
 """
@@ -189,7 +189,7 @@ ready. It will also cancel the future (and its associated operation if the
 latter is still outstanding).
 """
 function fdb_future_destroy(f)
-    ccall((:fdb_future_destroy, fdb_c), Void, (fdb_future_ptr_t,), f)
+    ccall((:fdb_future_destroy, fdb_c), Nothing, (fdb_future_ptr_t,), f)
 end
 
 """
@@ -242,7 +242,7 @@ thread synchronization (and/or for posting work back to your application event
 loop, thread pool, etc. if your application’s architecture calls for that).
 """
 function fdb_future_set_callback(f, callback::FDBCallback, callback_parameter)
-    ccall((:fdb_future_set_callback, fdb_c), fdb_error_t, (fdb_future_ptr_t, FDBCallback, Ptr{Void}), f, callback, callback_parameter)
+    ccall((:fdb_future_set_callback, fdb_c), fdb_error_t, (fdb_future_ptr_t, FDBCallback, Ptr{Nothing}), f, callback, callback_parameter)
 end
 
 """
@@ -268,7 +268,7 @@ for use in writing generic, thread-safe language bindings. Applications should
 normally call fdb_future_destroy() only.
 """
 function fdb_future_release_memory(f)
-    ccall((:fdb_future_release_memory, fdb_c), Void, (fdb_future_ptr_t,), f)
+    ccall((:fdb_future_release_memory, fdb_c), Nothing, (fdb_future_ptr_t,), f)
 end
 
 """
@@ -318,7 +318,7 @@ valid until either fdb_future_destroy(future) or
 fdb_future_release_memory(future) is called.
 """
 function fdb_future_get_keyvalue_array(f, out_kv, out_count, out_more)
-    ccall((:fdb_future_get_keyvalue_array, fdb_c), fdb_error_t, (fdb_future_ptr_t, Ptr{Ptr{Void}}, Ptr{Cint}, Ptr{fdb_bool_t}), f, out_kv, out_count, out_more)
+    ccall((:fdb_future_get_keyvalue_array, fdb_c), fdb_error_t, (fdb_future_ptr_t, Ptr{Ptr{Nothing}}, Ptr{Cint}, Ptr{fdb_bool_t}), f, out_kv, out_count, out_more)
 end
 
 """
@@ -509,7 +509,7 @@ successful call to fdb_future_get_cluster(). This function only destroys a
 handle to the cluster - your cluster will be fine!
 """
 function fdb_cluster_destroy(c)
-    ccall((:fdb_cluster_destroy, fdb_c), Void, (fdb_cluster_ptr_t,), c)
+    ccall((:fdb_cluster_destroy, fdb_c), Nothing, (fdb_cluster_ptr_t,), c)
 end
 
 """
@@ -572,7 +572,7 @@ successful call to fdb_future_get_database(). This function only destroys a
 handle to the database – your database will be fine!
 """
 function fdb_database_destroy(d)
-    ccall((:fdb_database_destroy, fdb_c), Void, (fdb_database_ptr_t,), d)
+    ccall((:fdb_database_destroy, fdb_c), Nothing, (fdb_database_ptr_t,), d)
 end
 
 """
@@ -624,7 +624,7 @@ which has not had fdb_transaction_commit() called implicitly “rolls back” th
 transaction (sets and clears do not take effect on the database).
 """
 function fdb_transaction_destroy(tr)
-    ccall((:fdb_transaction_destroy, fdb_c), Void, (fdb_transaction_ptr_t,), tr)
+    ccall((:fdb_transaction_destroy, fdb_c), Nothing, (fdb_transaction_ptr_t,), tr)
 end
 
 """
@@ -645,7 +645,7 @@ value_length must be 8. This memory only needs to be valid until
 fdb_transaction_set_option() returns.
 """
 function fdb_transaction_set_option(tr, option::fdb_transaction_option_t)
-    ccall((:fdb_transaction_set_option, fdb_c), Void, (fdb_transaction_ptr_t, fdb_transaction_option_t), tr, option)
+    ccall((:fdb_transaction_set_option, fdb_c), Nothing, (fdb_transaction_ptr_t, fdb_transaction_option_t), tr, option)
 end
 
 """
@@ -671,7 +671,7 @@ Warning: If your program attempts to cancel a transaction after
     reason about the order in which transactions occur.
 """
 function fdb_transaction_cancel(tr)
-    ccall((:fdb_transaction_cancel, fdb_c), Void, (fdb_transaction_ptr_t,), tr)
+    ccall((:fdb_transaction_cancel, fdb_c), Nothing, (fdb_transaction_ptr_t,), tr)
 end
 
 """
@@ -691,7 +691,7 @@ fdb_transaction_get_*() have been called on this transaction already, the result
 is undefined.
 """
 function fdb_transaction_set_read_version(tr, version::Int64)
-    ccall((:fdb_transaction_set_read_version, fdb_c), Void, (fdb_transaction_ptr_t, Int64), tr, version)
+    ccall((:fdb_transaction_set_read_version, fdb_c), Nothing, (fdb_transaction_ptr_t, Int64), tr, version)
 end
 
 """
@@ -767,7 +767,7 @@ Parameters:
 - value_length: The length of the parameter specified by value.
 """
 function fdb_transaction_set(tr, key_name, key_name_length::Cint, value, value_length::Cint)
-    ccall((:fdb_transaction_set, fdb_c), Void, (fdb_transaction_ptr_t, Ptr{UInt8}, Cint, Ptr{UInt8}, Cint), tr, key_name, key_name_length, value, value_length)
+    ccall((:fdb_transaction_set, fdb_c), Nothing, (fdb_transaction_ptr_t, Ptr{UInt8}, Cint, Ptr{UInt8}, Cint), tr, key_name, key_name_length, value, value_length)
 end
 
 """
@@ -821,7 +821,7 @@ committed with fdb_transaction_commit().
     should be performed.
 """
 function fdb_transaction_atomic_op(tr, key_name, key_name_length::Cint, param, param_length::Cint, operation_type::fdb_mutation_type_t)
-    ccall((:fdb_transaction_atomic_op, fdb_c), Void, (fdb_transaction_ptr_t, Ptr{UInt8}, Cint, Ptr{UInt8}, Cint, fdb_mutation_type_t), tr, key_name, key_name_length, param, param_length, operation_type)
+    ccall((:fdb_transaction_atomic_op, fdb_c), Nothing, (fdb_transaction_ptr_t, Ptr{UInt8}, Cint, Ptr{UInt8}, Cint, fdb_mutation_type_t), tr, key_name, key_name_length, param, param_length, operation_type)
 end
 
 """
@@ -847,7 +847,7 @@ Parameters:
 - key_name_length: The length of the parameter specified by key_name.
 """
 function fdb_transaction_clear(tr, key_name, key_name_length::Cint)
-    ccall((:fdb_transaction_clear, fdb_c), Void, (fdb_transaction_ptr_t, Ptr{UInt8}, Cint), tr, key_name, key_name_length)
+    ccall((:fdb_transaction_clear, fdb_c), Nothing, (fdb_transaction_ptr_t, Ptr{UInt8}, Cint), tr, key_name, key_name_length)
 end
 
 """
@@ -879,7 +879,7 @@ Parameters:
     end_key_name_length.
 """
 function fdb_transaction_clear_range(tr, begin_key_name, begin_key_name_length::Cint, end_key_name, end_key_name_length::Cint)
-    ccall((:fdb_transaction_clear_range, fdb_c), Void, (fdb_transaction_ptr_t, Ptr{UInt8}, Cint, Ptr{UInt8}, Cint), tr, begin_key_name, begin_key_name_length, end_key_name, end_key_name_length)
+    ccall((:fdb_transaction_clear_range, fdb_c), Nothing, (fdb_transaction_ptr_t, Ptr{UInt8}, Cint, Ptr{UInt8}, Cint), tr, begin_key_name, begin_key_name_length, end_key_name, end_key_name_length)
 end
 
 """
@@ -1067,7 +1067,7 @@ not necessary to call fdb_transaction_reset() when handling an error with
 fdb_transaction_on_error() since the transaction has already been reset.
 """
 function fdb_transaction_reset(tr)
-    ccall((:fdb_transaction_reset, fdb_c), Void, (fdb_transaction_ptr_t,), tr)
+    ccall((:fdb_transaction_reset, fdb_c), Nothing, (fdb_transaction_ptr_t,), tr)
 end
 
 """

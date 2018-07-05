@@ -1,9 +1,26 @@
 using FoundationDB
+using Compat
+using Compat.Test
 
-@static if VERSION < v"0.7.0-DEV.2005"
-    using Base.Test
-else
-    using Test
+function timewaittask(watchtask, ref_twatch)
+    f = () -> begin
+        t1 = time()
+        Compat.fetch(watchtask)
+        ref_twatch[] = time() - t1
+    end
+    @static if VERSION < v"0.7.0-DEV.4442"
+        @schedule f()
+    else
+        @async f()
+    end
+end
+
+function arraycmp(a, b, cmp)
+    @static if VERSION < v"0.7.0-DEV.4442"
+        cmp(String(a), String(b))
+    else
+        cmp(a, b)
+    end
 end
 
 @testset "start network" begin
@@ -121,7 +138,7 @@ try
                 open(FDBDatabase(cluster)) do db
                     key = UInt8[0,1,2]
                     valarr = Int[1]
-                    val = unsafe_wrap(Array, convert(Ptr{UInt8}, pointer(valarr)), sizeof(Int))
+                    val = FoundationDB.unsafe_wrap(Array, convert(Ptr{UInt8}, pointer(valarr)), (sizeof(Int),), own=false)
                     for valint in 1:100
                         valarr[1] = valint
                         open(FDBTransaction(db)) do tran
@@ -186,19 +203,15 @@ try
                 val1 = UInt8[0, 0, 0]
                 val2 = UInt8[0, 0, 0]
                 open(FDBTransaction(db)) do tran
-                    twatch = 0.0
+                    ref_twatch = Ref(0.0)
                     watchtask = watchkey(tran, key)
-                    timetask = @schedule begin
-                        t1 = time()
-                        wait(watchtask)
-                        twatch = time() - t1
-                    end
+                    timetask = timewaittask(watchtask, ref_twatch)
                     sleep(0.5)
                     @test setval(tran, key, val2) == nothing
                     sleep(0.5)
                     @test clearkey(tran, key) == nothing
-                    wait(timetask)
-                    @test twatch > 0.4
+                    Compat.fetch(timetask)
+                    @test ref_twatch[] > 0.4
 
                     watchhandle = FDBFuture()
                     watchtask = watchkey(tran, key; handle=watchhandle)
@@ -209,7 +222,7 @@ try
                     sleep(0.2)
                     @test istaskdone(watchtask)
                     try
-                        wait(watchtask)
+                        Compat.fetch(watchtask)
                         error("watchtask should have failed!")
                     catch ex
                         @test isa(ex, FDBError)
@@ -230,17 +243,13 @@ try
                     @test setval(tran, key, val1) == nothing
                 end
 
-                twatch = time()
+                ref_twatch = Ref(0.0)
                 # start a watch
                 watchtask = open(FDBTransaction(db)) do tran
                     watchkey(tran, key)
                 end
 
-                timetask = @schedule begin
-                    t1 = time()
-                    wait(watchtask)
-                    twatch = time() - t1
-                end
+                timetask = timewaittask(watchtask, ref_twatch)
 
                 open(FDBTransaction(db)) do tran
                     sleep(0.5)
@@ -249,8 +258,8 @@ try
                     @test clearkey(tran, key) == nothing
                 end
 
-                wait(timetask)
-                @test twatch > 0.4
+                Compat.fetch(timetask)
+                @test ref_twatch[] > 0.4
             end
         end
     end # testset "watch"
@@ -429,8 +438,8 @@ try
                     end
                     for val in vals
                         for idx in 1:length(val)
-                            (convert(String, val) > convert(String, maxval)) && (maxval = val)
-                            (convert(String, val) < convert(String, minval)) && (minval = val)
+                            arraycmp(val, maxval, >) && (maxval = val)
+                            arraycmp(val, minval, <) && (minval = val)
                             if idx > 1
                                 andval = andval .& val
                                 orval = orval .| val
@@ -461,7 +470,7 @@ try
     end # testset "atomic"
 
     @testset "conflicts" begin
-        function test_conflict(db, my_trigger::Channel{Void}, other_trigger::Channel{Void})
+        function test_conflict(db, my_trigger::Channel{Nothing}, other_trigger::Channel{Nothing})
             open(FDBTransaction(db)) do tran
                 # add conflict range
                 conflict(tran, UInt8[0,1,2], UInt8[0,1,3], FDBConflictRangeType.READ)
@@ -489,8 +498,8 @@ try
                     setval(tran, UInt8[0,1,2], UInt8[0,1,2])
                 end
 
-                c1 = Channel{Void}(1)
-                c2 = Channel{Void}(1)
+                c1 = Channel{Nothing}(1)
+                c2 = Channel{Nothing}(1)
 
                 try
                     @sync begin

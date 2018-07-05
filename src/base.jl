@@ -60,7 +60,16 @@ const FDBFuture = Ref{fdb_future_ptr_t}
 
 cancel(future::FDBFuture) = fdb_future_cancel(future[])
 
-block_until(future::fdb_future_ptr_t) = (Bool(fdb_future_is_ready(future)) || wait(@schedule fdb_future_block_until_ready_in_thread(future)); future)
+function block_until(future::fdb_future_ptr_t)
+    Bool(fdb_future_is_ready(future)) && return
+    @static if VERSION < v"0.7.0-DEV.4442"
+        wait_task = @schedule fdb_future_block_until_ready_in_thread(future)
+    else
+        wait_task = @async fdb_future_block_until_ready_in_thread(future)
+    end
+    Compat.fetch(wait_task)
+    future
+end
 block_until(errcode) = errcode
 
 function with_err_check(on_success, result::Union{fdb_future_ptr_t,fdb_error_t}, on_error=throw_on_error)
@@ -83,12 +92,12 @@ struct FDBNetwork
     function FDBNetwork(addr::String="127.0.0.1:4500", version::Cint=FDB_API_VERSION)
         throw_on_error(fdb_select_api_version(version))
         throw_on_error(fdb_setup_network(addr))
-        network_task = @schedule fdb_run_network_in_thread()
+        network_task = @static (VERSION < v"0.7.0-DEV.4442") ? (@schedule fdb_run_network_in_thread()) : (@async fdb_run_network_in_thread())
         network = new(addr, version, network_task)
     end
 end
 
-const network = Ref{Union{FDBNetwork,Void}}(nothing)
+const network = Ref{Union{FDBNetwork,Nothing}}(nothing)
 
 is_client_running() = (network[] !== nothing) && !istaskdone((network[]).task)
 
@@ -105,7 +114,7 @@ function stop_client()
     if network[] !== nothing
         if !istaskdone((network[]).task)
             fdb_stop_network()
-            wait((network[]).task)
+            Compat.fetch((network[]).task)
         end
     end
     nothing
@@ -124,7 +133,7 @@ mutable struct FDBCluster
 
     function FDBCluster(cluster_file::String="/etc/foundationdb/fdb.cluster")
         cluster = new(cluster_file, C_NULL)
-        finalizer(cluster, (cluster)->close(cluster))
+        finalizer((cluster)->close(cluster), cluster)
         cluster
     end
 end
@@ -170,7 +179,7 @@ mutable struct FDBDatabase
 
     function FDBDatabase(cluster::FDBCluster, name::String="DB")
         db = new(cluster, name, C_NULL)
-        finalizer(db, (db)->close(db))
+        finalizer((db)->close(db), db)
         db
     end
 end
@@ -184,7 +193,7 @@ function open(db::FDBDatabase)
     if !isopen(db)
         @assert is_client_running()
         cl = db.cluster.ptr
-        name = convert(Vector{UInt8}, db.name)
+        name = convert(Vector{UInt8}, codeunits(db.name))
         lname = Cint(length(name))
         handle = with_err_check(fdb_cluster_create_database(cl, name, lname)) do future
             h = Ref{fdb_database_ptr_t}(C_NULL)
@@ -232,14 +241,14 @@ mutable struct FDBTransaction
     db::FDBDatabase
     ptr::fdb_transaction_ptr_t
     needscommit::Bool
-    versionstamp::Union{Void,Vector{UInt8}}
+    versionstamp::Union{Nothing,Vector{UInt8}}
     autocommit::Bool
     trackversionstamp::Bool
-    versionstampfuture::Union{Void,fdb_future_ptr_t}
+    versionstampfuture::Union{Nothing,fdb_future_ptr_t}
 
     function FDBTransaction(db::FDBDatabase; autocommit::Bool=true, trackversionstamp::Bool=false)
         tran = new(db, C_NULL, false, nothing, autocommit, trackversionstamp, nothing)
-        finalizer(tran, (tran)->close(tran))
+        finalizer((tran)->close(tran), tran)
         tran
     end
 end
@@ -323,7 +332,7 @@ function commit(tran::FDBTransaction, on_error=(result)->retry_on_error(tran,res
         keyptr = Ref{Ptr{UInt8}}(C_NULL)
         keylen = Ref{Cint}(0)
         err_check(fdb_future_get_key(tran.versionstampfuture, keyptr, keylen))
-        tran.versionstamp = copy(unsafe_wrap(Array, keyptr[], (keylen[],), false))
+        tran.versionstamp = copy(unsafe_wrap(Array, keyptr[], (keylen[],), own=false))
         fdb_future_destroy(tran.versionstampfuture)
         tran.versionstampfuture = nothing
     end
@@ -398,7 +407,7 @@ function getkey(fn::Function, tran::FDBTransaction, keyselector)
     keylen = Ref{Cint}(0)
     with_err_check(fdb_transaction_get_key(tran.ptr, keyselector...)) do result
         err_check(fdb_future_get_key(result, keyptr, keylen))
-        key = fn(tran, true, unsafe_wrap(Array, keyptr[], (keylen[],), false))
+        key = fn(tran, true, unsafe_wrap(Array, keyptr[], (keylen[],), own=false))
         fdb_future_destroy(result)
         key
     end::Vector{UInt8}
@@ -412,7 +421,7 @@ function getval(fn::Function, tran::FDBTransaction, key::Vector{UInt8})
     vallen = Ref{Cint}(0)
     with_err_check(fdb_transaction_get(tran.ptr, key, Cint(length(key)))) do result
         err_check(fdb_future_get_value(result, present, valptr, vallen))
-        val = fn(tran, Bool(present[]), unsafe_wrap(Array, valptr[], (vallen[],), false))
+        val = fn(tran, Bool(present[]), unsafe_wrap(Array, valptr[], (vallen[],), own=false))
         fdb_future_destroy(result)
     end
     val
@@ -420,8 +429,8 @@ end
 
 copykeyval(tran::FDBTransaction, key::Vector{UInt8}, val::Vector{UInt8}) = (copy(key),copy(val))
 function copykeyval(tran::FDBTransaction, keyval::fdb_kv_t)
-    key = unsafe_wrap(Array, convert(Ptr{UInt8}, keyval.key), (keyval.key_length,), false)
-    val = unsafe_wrap(Array, convert(Ptr{UInt8}, keyval.value), (keyval.value_length,), false)
+    key = unsafe_wrap(Array, convert(Ptr{UInt8}, keyval.key), (keyval.key_length,), own=false)
+    val = unsafe_wrap(Array, convert(Ptr{UInt8}, keyval.value), (keyval.value_length,), own=false)
     copykeyval(tran, key, val)
 end
 collectkeyval(tran::FDBTransaction, keyval::fdb_kv_t, into) = push!(into, copykeyval(tran, keyval))
@@ -440,7 +449,7 @@ function getrange(fn::Function, tran::FDBTransaction, begin_keysel, end_keysel; 
         streaming_mode::Cint=FDBStreamingMode.WANT_ALL, iteration::Integer=0, snapshot::Integer=0, reverse::Bool=false)
     more = Ref{fdb_bool_t}(false)
     count = Ref{Cint}(0)
-    kvptr = Ref{Ptr{Void}}(C_NULL)
+    kvptr = Ref{Ptr{Nothing}}(C_NULL)
 
     fnoutput = with_err_check(fdb_transaction_get_range(tran.ptr,
         begin_keysel[1], begin_keysel[2], begin_keysel[3], begin_keysel[4],
@@ -450,17 +459,17 @@ function getrange(fn::Function, tran::FDBTransaction, begin_keysel, end_keysel; 
         fnoutput = nothing
         err_check(fdb_future_get_keyvalue_array(result, kvptr, count, more))
         if count[] > 0
-            total_size = (sizeof(Ptr{Void}) + sizeof(Cint)) * 2 * count[]
+            total_size = (sizeof(Ptr{Nothing}) + sizeof(Cint)) * 2 * count[]
             ptr = convert(Ptr{UInt8}, kvptr[])
             valarr = Vector{fdb_kv_t}()
             # the fields are byte packed
             for idx in 1:(count[])
-                _key = unsafe_load(convert(Ptr{Ptr{Void}}, ptr))
-                ptr += sizeof(Ptr{Void})
+                _key = unsafe_load(convert(Ptr{Ptr{Nothing}}, ptr))
+                ptr += sizeof(Ptr{Nothing})
                 _key_length = unsafe_load(convert(Ptr{Cint}, ptr))
                 ptr += sizeof(Cint)
-                _value = unsafe_load(convert(Ptr{Ptr{Void}}, ptr))
-                ptr += sizeof(Ptr{Void})
+                _value = unsafe_load(convert(Ptr{Ptr{Nothing}}, ptr))
+                ptr += sizeof(Ptr{Nothing})
                 _value_length = unsafe_load(convert(Ptr{Cint}, ptr))
                 ptr += sizeof(Cint)
                 push!(valarr, fdb_kv_t(_key, _key_length, _value, _value_length))
@@ -479,7 +488,7 @@ function setval(tran::FDBTransaction, key::Vector{UInt8}, val::Vector{UInt8})
     ret
 end
 
-function watchkey_internal(fn::Function, tran::FDBTransaction, key::Vector{UInt8}, on_finish::Function, handle::Union{Void,FDBFuture})
+function watchkey_internal(fn::Function, tran::FDBTransaction, key::Vector{UInt8}, on_finish::Function, handle::Union{Nothing,FDBFuture})
     future = fdb_transaction_watch(tran.ptr, key, Cint(length(key)))
     (handle === nothing) || (handle[] = future)
     tran.needscommit = true
@@ -488,13 +497,19 @@ function watchkey_internal(fn::Function, tran::FDBTransaction, key::Vector{UInt8
     nothing
 end
 
-function watchkey(tran::FDBTransaction, key::Vector{UInt8}; on_finish::Function=err_check, handle::Union{Void,FDBFuture}=nothing)
+function watchkey(tran::FDBTransaction, key::Vector{UInt8}; on_finish::Function=err_check, handle::Union{Nothing,FDBFuture}=nothing)
     watchstarted = Future()
-    watchtask = @schedule watchkey_internal(tran, key, on_finish, handle) do tran, key
-        put!(watchstarted, true)
+    @static if VERSION < v"0.7.0-DEV.4442"
+        watch_task = @schedule watchkey_internal(tran, key, on_finish, handle) do tran, key
+            put!(watchstarted, true)
+        end
+    else
+        watch_task = @async watchkey_internal(tran, key, on_finish, handle) do tran, key
+            put!(watchstarted, true)
+        end
     end
     wait(watchstarted)
-    watchtask
+    watch_task
 end
 
 function atomic(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}, op::Cint)
@@ -504,17 +519,17 @@ end
 
 function atomic_add(tran::FDBTransaction, key::Vector{UInt8}, param::Integer)
     leparam = htol(param) # ensure param is little-endian, unsigned or signed in two's complement format
-    param_bytes = unsafe_wrap(Array, convert(Ptr{UInt8}, pointer_from_objref(leparam)), (sizeof(leparam),), false)
+    param_bytes = convert(Vector{UInt8}, reinterpret(UInt8, [leparam]))
     atomic(tran, key, param_bytes, FDBMutationType.ADD)
 end
 
 function atomic_max(tran::FDBTransaction, key::Vector{UInt8}, param::Cuint)
-    param_bytes = unsafe_wrap(Array, convert(Ptr{UInt8}, pointer_from_objref(param)), (sizeof(param),), false)
+    param_bytes = convert(Vector{UInt8}, reinterpret(UInt8, [param]))
     atomic(tran, key, param_bytes, FDBMutationType.MAX)
 end
 
 function atomic_min(tran::FDBTransaction, key::Vector{UInt8}, param::Cuint)
-    param_bytes = unsafe_wrap(Array, convert(Ptr{UInt8}, pointer_from_objref(param)), (sizeof(param),), false)
+    param_bytes = convert(Vector{UInt8}, reinterpret(UInt8, [param]))
     atomic(tran, key, param_bytes, FDBMutationType.MIN)
 end
 
@@ -532,7 +547,7 @@ atomic_max(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}) = ato
 atomic_min(tran::FDBTransaction, key::Vector{UInt8}, param::Vector{UInt8}) = atomic(tran, key, param, FDBMutationType.BYTE_MIN)
 function prep_atomic_key!(key::Vector{UInt8}, versionpos::Integer)
     pos = htol(UInt16(versionpos-1))  # make it 0 based index
-    pos_bytes = unsafe_wrap(Array, convert(Ptr{UInt8}, pointer_from_objref(pos)), (sizeof(pos),), false)
+    pos_bytes = reinterpret(UInt8, [pos])
     splice!(key, versionpos:(versionpos-1), zeros(UInt8, 10))
     splice!(key, (length(key)+1):length(key), pos_bytes)
     key
