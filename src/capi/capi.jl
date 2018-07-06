@@ -1,6 +1,9 @@
 module CApi
+    using Compat
+    using Compat.Libdl
+
     const fdb_c = "libfdb_c"
-    const libfdb = Ref{Ptr{Void}}(C_NULL)
+    const libfdb = Ref{Ptr{Nothing}}(C_NULL)
     
     function __init__()
         global libfdb

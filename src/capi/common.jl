@@ -211,10 +211,10 @@ const FDBErrorPredicate = enum_fdb_error_predicate_t(
 const FDB_API_VERSION = Cint(510)
 const fdb_error_t = Cint
 const fdb_bool_t = Cint
-const fdb_transaction_ptr_t = Ptr{Void}
-const fdb_future_ptr_t = Ptr{Void}
-const fdb_cluster_ptr_t = Ptr{Void}
-const fdb_database_ptr_t = Ptr{Void}
+const fdb_transaction_ptr_t = Ptr{Nothing}
+const fdb_future_ptr_t = Ptr{Nothing}
+const fdb_cluster_ptr_t = Ptr{Nothing}
+const fdb_database_ptr_t = Ptr{Nothing}
 const fdb_network_option_t = Cint
 const fdb_cluster_option_t = Cint
 const fdb_database_option_t = Cint
@@ -227,7 +227,7 @@ const fdb_error_predicate_t = Cint
 """
 A pointer to a function which takes FDBFuture* and void* and returns void.
 """
-const FDBCallback = Ptr{Void}
+const FDBCallback = Ptr{Nothing}
 
 """
 Represents a single key-value pair in the output of
@@ -239,8 +239,8 @@ fdb_future_get_keyvalue_array().
 - value_length: The length of the value pointed to by value.
 """
 struct fdb_kv_t
-    key::Ptr{Void}
+    key::Ptr{Nothing}
     key_length::Cint
-    value::Ptr{Void}
+    value::Ptr{Nothing}
     value_length::Cint
 end
