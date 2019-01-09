@@ -1,26 +1,17 @@
 using FoundationDB
-using Compat
-using Compat.Test
+using Test
 
 function timewaittask(watchtask, ref_twatch)
     f = () -> begin
         t1 = time()
-        Compat.fetch(watchtask)
+        fetch(watchtask)
         ref_twatch[] = time() - t1
     end
-    @static if VERSION < v"0.7.0-DEV.4442"
-        @schedule f()
-    else
-        @async f()
-    end
+    @async f()
 end
 
 function arraycmp(a, b, cmp)
-    @static if VERSION < v"0.7.0-DEV.4442"
-        cmp(String(a), String(b))
-    else
-        cmp(a, b)
-    end
+    cmp(a, b)
 end
 
 @testset "start network" begin
@@ -210,7 +201,7 @@ try
                     @test setval(tran, key, val2) == nothing
                     sleep(0.5)
                     @test clearkey(tran, key) == nothing
-                    Compat.fetch(timetask)
+                    fetch(timetask)
                     @test ref_twatch[] > 0.4
 
                     watchhandle = FDBFuture()
@@ -222,7 +213,7 @@ try
                     sleep(0.2)
                     @test istaskdone(watchtask)
                     try
-                        Compat.fetch(watchtask)
+                        fetch(watchtask)
                         error("watchtask should have failed!")
                     catch ex
                         @test isa(ex, FDBError)
@@ -258,7 +249,7 @@ try
                     @test clearkey(tran, key) == nothing
                 end
 
-                Compat.fetch(timetask)
+                fetch(timetask)
                 @test ref_twatch[] > 0.4
             end
         end

@@ -1,7 +1,6 @@
 using FoundationDB
 using FoundationDB.CApi
-using Compat
-using Compat.Test
+using Test
 
 const ADDRESS = "127.0.0.1:4500"
 
@@ -16,11 +15,7 @@ end
     @test 0 == fdb_network_set_option(FDBNetworkOption.LOCAL_ADDRESS, ADDRESS, Cint(length(ADDRESS)))
     @test 0 == fdb_setup_network(ADDRESS)
     global network_task
-    @static if VERSION < v"0.7.0-DEV.4442"
-        network_task = @schedule fdb_run_network_in_thread()
-    else
-        network_task = @async fdb_run_network_in_thread()
-    end
+    network_task = @async fdb_run_network_in_thread()
 end
 
 @testset "stop network" begin
