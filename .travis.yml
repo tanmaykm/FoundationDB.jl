@@ -4,7 +4,7 @@ dist: trusty
 os:
   - linux
 julia:
-  - 0.6
+  - 1.0
   - nightly
 env:
   - JULIA_NUM_THREADS=2
@@ -22,9 +22,9 @@ before_install:
 script:
   - echo JULIA_NUM_THREADS=$JULIA_NUM_THREADS
   - export JULIA_NUM_THREADS
-  - julia -e 'Pkg.clone(pwd()); Pkg.build("FoundationDB"); Pkg.test("FoundationDB"; coverage=true)'
+  - julia -e 'using Pkg; Pkg.clone(pwd()); Pkg.build("FoundationDB"); Pkg.test("FoundationDB"; coverage=true)'
 after_success:
   # push coverage results to Coveralls
-  - julia -e 'cd(Pkg.dir("FoundationDB")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())'
+  - julia -e 'using Pkg; cd(Pkg.dir("FoundationDB")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())'
   # push coverage results to Codecov
-  - julia -e 'cd(Pkg.dir("FoundationDB")); Pkg.add("Coverage"); using Coverage; Codecov.submit(Codecov.process_folder())'
+  - julia -e 'using Pkg; cd(Pkg.dir("FoundationDB")); Pkg.add("Coverage"); using Coverage; Codecov.submit(Codecov.process_folder())'

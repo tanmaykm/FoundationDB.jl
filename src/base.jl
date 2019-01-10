@@ -62,12 +62,8 @@ cancel(future::FDBFuture) = fdb_future_cancel(future[])
 
 function block_until(future::fdb_future_ptr_t)
     Bool(fdb_future_is_ready(future)) && return
-    @static if VERSION < v"0.7.0-DEV.4442"
-        wait_task = @schedule fdb_future_block_until_ready_in_thread(future)
-    else
-        wait_task = @async fdb_future_block_until_ready_in_thread(future)
-    end
-    Compat.fetch(wait_task)
+    wait_task = @async fdb_future_block_until_ready_in_thread(future)
+    fetch(wait_task)
     future
 end
 block_until(errcode) = errcode
@@ -92,7 +88,7 @@ struct FDBNetwork
     function FDBNetwork(addr::String="127.0.0.1:4500", version::Cint=FDB_API_VERSION)
         throw_on_error(fdb_select_api_version(version))
         throw_on_error(fdb_setup_network(addr))
-        network_task = @static (VERSION < v"0.7.0-DEV.4442") ? (@schedule fdb_run_network_in_thread()) : (@async fdb_run_network_in_thread())
+        network_task = @async fdb_run_network_in_thread()
         network = new(addr, version, network_task)
     end
 end
@@ -114,7 +110,7 @@ function stop_client()
     if network[] !== nothing
         if !istaskdone((network[]).task)
             fdb_stop_network()
-            Compat.fetch((network[]).task)
+            fetch((network[]).task)
         end
     end
     nothing
@@ -499,14 +495,8 @@ end
 
 function watchkey(tran::FDBTransaction, key::Vector{UInt8}; on_finish::Function=err_check, handle::Union{Nothing,FDBFuture}=nothing)
     watchstarted = Future()
-    @static if VERSION < v"0.7.0-DEV.4442"
-        watch_task = @schedule watchkey_internal(tran, key, on_finish, handle) do tran, key
-            put!(watchstarted, true)
-        end
-    else
-        watch_task = @async watchkey_internal(tran, key, on_finish, handle) do tran, key
-            put!(watchstarted, true)
-        end
+    watch_task = @async watchkey_internal(tran, key, on_finish, handle) do tran, key
+        put!(watchstarted, true)
     end
     wait(watchstarted)
     watch_task

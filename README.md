@@ -42,5 +42,5 @@ Note: The Julia implementation makes use of Julia threading APIs. Make sure you 
 ```
 $> JULIA_NUM_THREADS=2
 $> export JULIA_NUM_THREADS
-$> julia -e 'Pkg.test("FoundationDB")'
+$> julia -e 'using Pkg; Pkg.test("FoundationDB")'
 ```
